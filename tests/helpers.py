@@ -38,6 +38,9 @@ FAKE_GH = textwrap.dedent(
         with open(log, "a") as fh:
             fh.write(" ".join(args) + "\\n")
     hosts = os.path.join(os.environ["GH_CONFIG_DIR"], "hosts.yml")
+    if args[:1] == ["--version"]:
+        sys.stdout.write("gh version " + os.environ.get("FAKE_GH_VERSION", "2.62.0") + " (2024-11-14)\\n")
+        sys.exit(0)
     if args[:2] == ["auth", "status"]:
         if "--json" in args:
             sys.stderr.write("unknown flag: --json\\n")

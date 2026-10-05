@@ -22,7 +22,10 @@ def command_args() -> List[str]:
     launcher = os.path.join(_REPO_ROOT, "bin", "gh-control")
     if os.path.isfile(launcher) and os.access(launcher, os.X_OK):
         return [os.path.realpath(launcher)]
-    return [os.path.realpath(sys.executable), "-m", "gh_control"]
+    # Installed package (pip/pipx/Homebrew): run __main__.py by path so the
+    # action works even if this interpreter has no gh_control on sys.path.
+    main_py = os.path.join(os.path.dirname(os.path.realpath(__file__)), "__main__.py")
+    return [os.path.realpath(sys.executable), main_py]
 
 
 def build_state(cfg: Optional[core.Config] = None) -> dict:

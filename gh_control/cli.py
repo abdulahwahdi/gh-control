@@ -12,7 +12,7 @@ import subprocess
 import sys
 from typing import List, Optional
 
-from gh_control import __version__, core, menu
+from gh_control import __version__, core, installer, menu
 
 
 def _print_account(account: core.Account) -> None:
@@ -101,7 +101,19 @@ def cmd_open_config(args) -> int:
     return 0
 
 
-def build_parser() -> argparse.ArgumentParser:
+def cmd_install(args) -> int:
+    return installer.install(dry_run=args.dry_run, frontend=args.frontend, target_dir=args.plugin_dir)
+
+
+def cmd_uninstall(args) -> int:
+    return installer.uninstall(dry_run=args.dry_run, target_dir=args.plugin_dir)
+
+
+def cmd_doctor(args) -> int:
+    return installer.doctor()
+
+
+def build_parser()-> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gh-control",
         description="Show and switch the active GitHub CLI (gh) account.",
@@ -133,6 +145,21 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("open-config", help="create (if missing) and open the config file")
     p.add_argument("--print-path", action="store_true", help="only print the path")
     p.set_defaults(func=cmd_open_config)
+
+    p = sub.add_parser("install", help="install the top-bar plugin for this desktop")
+    p.add_argument("--frontend", choices=installer.FRONTENDS, default="auto",
+                   help="menu-bar app to install for (default: detect)")
+    p.add_argument("--plugin-dir", metavar="DIR", help="override the plugin folder")
+    p.add_argument("--dry-run", action="store_true", help="only show what would be done")
+    p.set_defaults(func=cmd_install)
+
+    p = sub.add_parser("uninstall", help="remove the top-bar plugin (config is kept)")
+    p.add_argument("--plugin-dir", metavar="DIR", help="also look in this plugin folder")
+    p.add_argument("--dry-run", action="store_true", help="only show what would be done")
+    p.set_defaults(func=cmd_uninstall)
+
+    p = sub.add_parser("doctor", help="check the setup and suggest fixes")
+    p.set_defaults(func=cmd_doctor)
 
     return parser
 
