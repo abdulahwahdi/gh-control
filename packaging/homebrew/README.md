@@ -13,7 +13,7 @@ Homebrew's Python.
    tarball checksum:
 
    ```sh
-   curl -fsSL https://github.com/OWNER/gh-control/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
+   curl -fsSL https://github.com/abdulahwahdi/gh-control/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
    ```
 
 3. Copy `gh-control.rb` to `Formula/gh-control.rb` in the tap. Replace

@@ -1,15 +1,15 @@
 # Homebrew formula template for gh-control.
-# Maintainers: replace OWNER, then set url/sha256 for each release
+# Set url/sha256 for each release
 # (see packaging/homebrew/README.md).
 class GhControl < Formula
   include Language::Python::Shebang
 
   desc "Show and switch the active GitHub CLI account from the menu bar"
-  homepage "https://github.com/OWNER/gh-control"
-  url "https://github.com/OWNER/gh-control/archive/refs/tags/v0.1.0.tar.gz"
+  homepage "https://github.com/abdulahwahdi/gh-control"
+  url "https://github.com/abdulahwahdi/gh-control/archive/refs/tags/v0.1.0.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   license "MIT"
-  head "https://github.com/OWNER/gh-control.git", branch: "main"
+  head "https://github.com/abdulahwahdi/gh-control.git", branch: "main"
 
   depends_on "gh"
   # Standard library only: no virtualenv or resources needed.

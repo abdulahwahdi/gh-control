@@ -19,7 +19,7 @@ welcome. By taking part you agree to follow the
 ## Dev setup
 
 ```sh
-git clone https://github.com/OWNER/gh-control.git
+git clone https://github.com/abdulahwahdi/gh-control.git
 cd gh-control
 ./bin/gh-control --help       # runs straight from the checkout
 ./bin/gh-control doctor

@@ -288,13 +288,15 @@ class InstallScriptTest(InstallerTestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout)
         cli = os.path.join(self.tmp, ".local", "bin", "gh-control")
         self.assertTrue(os.path.islink(cli))
-        self.assertTrue(os.path.exists(self.autostart))
+        if sys.platform != "darwin":  # the tray frontend is Linux-only
+            self.assertTrue(os.path.exists(self.autostart))
         self.assertIn("Ready to go", proc.stdout)
         self.assertNotIn("\033[", proc.stdout)  # no colours when not a TTY
 
         proc = self.run_sh()  # idempotent re-run
         self.assertEqual(proc.returncode, 0, proc.stdout)
-        self.assertIn("already installed", proc.stdout)
+        if sys.platform != "darwin":  # no tray plugin to find on macOS
+            self.assertIn("already installed", proc.stdout)
 
         proc = self.run_sh("--uninstall")
         self.assertEqual(proc.returncode, 0, proc.stdout)
