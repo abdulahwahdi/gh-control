@@ -30,5 +30,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Public README, license, contributing guide, code of conduct, security
   policy, CI, and issue and pull request templates.
 
-[Unreleased]: https://github.com/OWNER/gh-control/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/gh-control/releases/tag/v0.1.0
+[Unreleased]: https://github.com/abdulahwahdi/gh-control/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/abdulahwahdi/gh-control/releases/tag/v0.1.0

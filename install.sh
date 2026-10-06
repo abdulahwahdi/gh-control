@@ -1,8 +1,7 @@
 #!/bin/sh
-# gh-control installer: https://github.com/OWNER/gh-control
-# (maintainers: replace OWNER here and in DEFAULT_REPO below)
+# gh-control installer: https://github.com/abdulahwahdi/gh-control
 #
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/gh-control/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/abdulahwahdi/gh-control/main/install.sh | sh
 #   curl -fsSL .../install.sh | sh -s -- --uninstall
 #
 # Installs the gh-control CLI for the current user (no root needed):
@@ -24,7 +23,7 @@
 
 set -eu
 
-DEFAULT_REPO="OWNER/gh-control"
+DEFAULT_REPO="abdulahwahdi/gh-control"
 REPO="${GH_CONTROL_REPO:-$DEFAULT_REPO}"
 REF="${GH_CONTROL_REF:-main}"
 METHOD="auto"
@@ -60,7 +59,7 @@ run() {
 
 usage() {
   if [ -f "$0" ]; then
-    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
   else
     say "Usage: install.sh [--uninstall] [--dry-run] [--ref <tag>] [--method auto|pipx|pip|source] [--frontend <f>]"
   fi
@@ -94,7 +93,7 @@ TARBALL="https://github.com/$REPO/archive/$REF.tar.gz"
 LOCAL_SRC=""
 script_dir=""
 if [ -f "$0" ]; then
-  script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+  script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || script_dir=""
 fi
 if [ -n "$script_dir" ] && [ -f "$script_dir/gh_control/__init__.py" ] && [ -f "$script_dir/bin/gh-control" ]; then
   LOCAL_SRC="$script_dir"

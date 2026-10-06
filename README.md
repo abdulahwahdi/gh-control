@@ -1,7 +1,3 @@
-<!--
-  Maintainers: replace every OWNER below (badges, install URLs, links)
-  with the GitHub user or organisation that hosts this repository.
--->
 
 <div align="center">
 
@@ -11,7 +7,7 @@
 
 **See which GitHub account is active, and switch between work and personal with one click from your top bar.**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/OWNER/gh-control/ci.yml?branch=main&label=CI&logo=github)](https://github.com/OWNER/gh-control/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/abdulahwahdi/gh-control/ci.yml?branch=main&label=CI&logo=github)](https://github.com/abdulahwahdi/gh-control/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#-platform-setup)
@@ -101,7 +97,7 @@ You need **Python 3.8+** and the **[GitHub CLI](https://cli.github.com) 2.40 or 
 **1. Install gh-control**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/OWNER/gh-control/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/abdulahwahdi/gh-control/main/install.sh | sh
 ```
 
 This installs the CLI for your user (no `sudo`), adds the top-bar plugin
@@ -135,7 +131,7 @@ The one-liner is the easiest way. Expand an option below for the others.
 <summary><b>🌀 curl one-liner</b> (recommended)</summary>
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/OWNER/gh-control/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/abdulahwahdi/gh-control/main/install.sh | sh
 ```
 
 The installer tries `pipx`, then `python3 -m pip --user`, then falls back to a
@@ -147,10 +143,10 @@ Options go after `sh -s --`:
 
 ```sh
 # Preview without changing anything
-curl -fsSL https://raw.githubusercontent.com/OWNER/gh-control/main/install.sh | sh -s -- --dry-run
+curl -fsSL https://raw.githubusercontent.com/abdulahwahdi/gh-control/main/install.sh | sh -s -- --dry-run
 
 # Pin a release, choose the install method or the frontend
-curl -fsSL https://raw.githubusercontent.com/OWNER/gh-control/main/install.sh | sh -s -- --ref v0.1.0 --method pipx --frontend argos
+curl -fsSL https://raw.githubusercontent.com/abdulahwahdi/gh-control/main/install.sh | sh -s -- --ref v0.1.0 --method pipx --frontend argos
 ```
 
 | Option | Meaning |
@@ -168,7 +164,7 @@ The environment variables `GH_CONTROL_REPO` (`owner/name`) and
 Prefer to read scripts before running them? Good idea:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/OWNER/gh-control/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/abdulahwahdi/gh-control/main/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
@@ -179,7 +175,7 @@ sh install.sh
 <summary><b>🧰 pipx</b></summary>
 
 ```sh
-pipx install git+https://github.com/OWNER/gh-control.git
+pipx install git+https://github.com/abdulahwahdi/gh-control.git
 gh-control install
 ```
 
@@ -192,7 +188,7 @@ Upgrade with `pipx upgrade gh-control`, or by running the same
 <summary><b>🐍 pip</b></summary>
 
 ```sh
-python3 -m pip install --user git+https://github.com/OWNER/gh-control.git
+python3 -m pip install --user git+https://github.com/abdulahwahdi/gh-control.git
 gh-control install
 ```
 
@@ -206,7 +202,7 @@ managed environment"), use pipx or the one-liner instead.
 <summary><b>🍺 Homebrew</b> (macOS / Linuxbrew)</summary>
 
 ```sh
-brew install OWNER/tap/gh-control
+brew install abdulahwahdi/tap/gh-control
 brew install --cask swiftbar   # macOS: if you don't have SwiftBar or xbar yet
 gh-control install
 ```
@@ -221,7 +217,7 @@ publish the tap.
 <summary><b>🛠️ From a git clone</b></summary>
 
 ```sh
-git clone https://github.com/OWNER/gh-control.git
+git clone https://github.com/abdulahwahdi/gh-control.git
 cd gh-control
 sh install.sh            # installs this checkout (same options as the one-liner)
 ```
@@ -526,7 +522,7 @@ gh-control uninstall     # removes the top-bar plugin / tray autostart entry
 Then remove the CLI the way you installed it:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/OWNER/gh-control/main/install.sh | sh -s -- --uninstall   # one-liner install (also removes the plugin)
+curl -fsSL https://raw.githubusercontent.com/abdulahwahdi/gh-control/main/install.sh | sh -s -- --uninstall   # one-liner install (also removes the plugin)
 pipx uninstall gh-control
 python3 -m pip uninstall gh-control
 brew uninstall gh-control

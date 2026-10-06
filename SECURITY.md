@@ -12,7 +12,7 @@ Security fixes go into the latest release only.
 
 Please **don't open a public issue** for security problems. Report them
 privately through GitHub's
-[private vulnerability reporting](https://github.com/OWNER/gh-control/security/advisories/new)
+[private vulnerability reporting](https://github.com/abdulahwahdi/gh-control/security/advisories/new)
 (**Security → Report a vulnerability** on the repository page).
 
 Please include:

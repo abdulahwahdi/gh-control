@@ -104,6 +104,8 @@ class NoGhMenuTest(GhTestCase):
         link = os.path.join(self.bin, "python3")
         os.symlink(sys.executable, link)
         os.environ["PATH"] = self.bin + os.pathsep + "/bin"
+        # /bin may hold a real gh (CI runners); force "gh not found".
+        os.environ["GH_CONTROL_GH"] = "/nonexistent"
         self.run_plugin(["/bin/bash", os.path.join(ROOT, "plugins", "argos", "gh-control.30s.sh")])
 
 
