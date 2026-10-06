@@ -295,7 +295,8 @@ class InstallScriptTest(InstallerTestCase):
 
         proc = self.run_sh()  # idempotent re-run
         self.assertEqual(proc.returncode, 0, proc.stdout)
-        self.assertIn("already installed", proc.stdout)
+        if sys.platform != "darwin":  # no tray plugin to find on macOS
+            self.assertIn("already installed", proc.stdout)
 
         proc = self.run_sh("--uninstall")
         self.assertEqual(proc.returncode, 0, proc.stdout)

@@ -48,6 +48,8 @@ jobs:
       - name: Installer dry run and source install in a temp HOME
         run: |
           export HOME="$(mktemp -d)"
+          # Runners preset XDG_CONFIG_HOME, which would bypass the temp HOME.
+          unset XDG_CONFIG_HOME XDG_DATA_HOME
           sh install.sh --dry-run --method source --frontend argos
           sh install.sh --method source --frontend argos
           test -L "$HOME/.local/bin/gh-control"
