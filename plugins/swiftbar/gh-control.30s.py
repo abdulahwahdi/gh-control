@@ -1,0 +1,1 @@
+../../gh_control/plugins/swiftbar/gh-control.30s.py

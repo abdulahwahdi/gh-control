@@ -1,0 +1,34 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-10-05
+
+### Added
+
+- Core CLI `gh-control` with `list`, `current`, `switch`, `toggle`, `menu`
+  and `open-config`. Python standard library only.
+- Fast, offline account discovery from gh's `hosts.yml` (honours
+  `GH_CONFIG_DIR` / `XDG_CONFIG_HOME`), falling back to `gh auth status`
+  (JSON or text).
+- Optional config `~/.config/gh-control/config.json` with per-account
+  `label`, `icon`, `color`, `sfimage`, `git_name` and `git_email`, plus
+  `host`, `notify` and `set_git_identity`.
+- Optional global git identity switching and desktop notifications on switch.
+- Top-bar frontends: SwiftBar/xbar plugin (macOS), Argos plugin (GNOME) and
+  AppIndicator tray (KDE, XFCE and others).
+- `gh-control install`, `uninstall` and `doctor`: idempotent plugin setup
+  without root, and a setup checker with suggested fixes.
+- `install.sh` one-line installer (pipx, pip or plain copy) with
+  `--dry-run`, `--uninstall`, `--ref`, `--method` and `--frontend`.
+- `pyproject.toml` for pip/pipx and a Homebrew formula template.
+- Public README, license, contributing guide, code of conduct, security
+  policy, CI, and issue and pull request templates.
+
+[Unreleased]: https://github.com/OWNER/gh-control/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/OWNER/gh-control/releases/tag/v0.1.0

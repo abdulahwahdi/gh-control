@@ -1,0 +1,1 @@
+../../gh_control/plugins/argos/gh-control.30s.sh

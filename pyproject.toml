@@ -1,0 +1,50 @@
+# NOTE for maintainers: replace OWNER in the URLs below with the GitHub
+# user/organisation that hosts this repository.
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gh-control"
+dynamic = ["version"]
+description = "See and switch the active GitHub CLI (gh) account from the macOS menu bar or the Linux top bar."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "gh-control contributors" }]
+keywords = ["github", "gh", "cli", "account", "switcher", "swiftbar", "xbar", "argos", "menubar", "tray"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: MacOS X",
+    "Environment :: X11 Applications :: GTK",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Utilities",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/OWNER/gh-control"
+Source = "https://github.com/OWNER/gh-control"
+Issues = "https://github.com/OWNER/gh-control/issues"
+Changelog = "https://github.com/OWNER/gh-control/blob/main/CHANGELOG.md"
+
+[project.scripts]
+gh-control = "gh_control.cli:main"
+
+[tool.setuptools]
+packages = ["gh_control"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+gh_control = ["plugins/*/*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "gh_control.__version__" }
