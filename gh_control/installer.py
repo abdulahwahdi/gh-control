@@ -17,7 +17,7 @@ import sys
 from dataclasses import dataclass
 from typing import List, Optional, TextIO, Tuple
 
-from gh_control import __version__, core
+from gh_control import __version__, core, updater
 
 FRONTENDS = ("auto", "swiftbar", "xbar", "argos", "tray")
 MAC_FRONTENDS = ("swiftbar", "xbar")
@@ -498,6 +498,23 @@ def _doctor_git_identity(p: _Printer, cfg: core.Config, accounts: List[core.Acco
             )
 
 
+def _doctor_update(p: "_Printer", cfg: core.Config) -> None:
+    """Report the cached release check; never a blocker, never a network call."""
+    info = updater.load_cached()
+    if info and info.newer:
+        if cfg.check_updates:
+            p.mark(
+                WARN,
+                "gh-control {} is available (you have {})".format(info.tag, __version__),
+                "Run: gh-control update",
+            )
+            return
+    elif info and info.tag:
+        p.mark(OK, "gh-control is up to date (latest {})".format(info.tag))
+        return
+    p.line("  Run 'gh-control update --check' to look for updates")
+
+
 def doctor(platform: Optional[str] = None, out: Optional[TextIO] = None) -> int:
     """Check the setup and print fixes. Returns 1 if something blocks use."""
     p = _Printer(out)
@@ -610,6 +627,8 @@ def doctor(platform: Optional[str] = None, out: Optional[TextIO] = None) -> int:
             "gh-control is not on your PATH",
             'Add ~/.local/bin to PATH, e.g.: echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/.profile',
         )
+
+    _doctor_update(p, cfg)
 
     p.line()
     if blockers:

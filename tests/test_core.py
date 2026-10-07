@@ -159,6 +159,13 @@ class ConfigTest(GhTestCase):
         accounts = {a.login: a for a in core.list_accounts(cfg)}
         self.assertEqual(accounts["alice-corp"].label, "alice-corp")
 
+    def test_check_updates(self):
+        self.assertTrue(core.load_config().check_updates)
+        self.write_config({"check_updates": False})
+        self.assertFalse(core.load_config().check_updates)
+        self.write_config({"check_updates": "no"})
+        self.assertTrue(core.load_config().check_updates)
+
     def test_invalid_json_is_reported_not_raised(self):
         self.write(self.config, "{not json")
         cfg = core.load_config()

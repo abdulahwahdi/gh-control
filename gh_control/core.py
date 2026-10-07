@@ -93,6 +93,7 @@ class Config:
     notify: bool = True
     set_git_identity: bool = True
     auto_git_identity: bool = True
+    check_updates: bool = True
     path: str = ""
     error: Optional[str] = None
 
@@ -182,6 +183,8 @@ def load_config() -> Config:
         cfg.set_git_identity = data["set_git_identity"]
     if isinstance(data.get("auto_git_identity"), bool):
         cfg.auto_git_identity = data["auto_git_identity"]
+    if isinstance(data.get("check_updates"), bool):
+        cfg.check_updates = data["check_updates"]
     return cfg
 
 

@@ -35,6 +35,7 @@
 - [CLI reference](#-cli-reference)
 - [Configuration](#-configuration)
 - [Git identity switching](#-git-identity-switching)
+- [Updating](#️-updating)
 - [Privacy and security](#-privacy-and-security)
 - [Troubleshooting](#-troubleshooting)
 - [FAQ](#-faq)
@@ -310,6 +311,7 @@ Support* extension.
 | `gh-control install [--frontend F] [--plugin-dir DIR] [--dry-run]` | Install the top-bar plugin; `F` is `auto`, `swiftbar`, `xbar`, `argos` or `tray` |
 | `gh-control uninstall [--plugin-dir DIR] [--dry-run]` | Remove the plugin (config is kept) |
 | `gh-control doctor` | Check the setup and suggest fixes |
+| `gh-control update [--check] [--dry-run]` | Upgrade to the latest release the same way gh-control was installed; `--check` only looks (`--json` for machine output) |
 | `gh-control --version` | Print the version |
 
 ```console
@@ -344,6 +346,7 @@ accounts, and opens it. A full example:
   "notify": true,
   "set_git_identity": true,
   "auto_git_identity": true,
+  "check_updates": true,
   "accounts": {
     "alice-corp": {
       "label": "Work",
@@ -371,6 +374,7 @@ accounts, and opens it. A full example:
 | `notify` | `true` | Show a desktop notification after switching |
 | `set_git_identity` | `true` | Write the account's git identity to `git config --global` when switching |
 | `auto_git_identity` | `true` | Fill missing `git_name` / `git_email` from GitHub (name and noreply email, cached). `false` uses only the config values, as before |
+| `check_updates` | `true` | Look for a new gh-control release once a day in the background and show **Update now** in the menu and doctor. `gh-control update` works either way |
 | `accounts` | `{}` | Per-account settings, keyed by GitHub login. Accounts listed here come first in the menu, in this order |
 | `accounts.<login>.label` | the login | Friendly name shown in the dropdown, e.g. `Work — alice-corp` |
 | `accounts.<login>.icon` | `●` | Text or emoji shown before the login, in the bar and in the dropdown |
@@ -392,6 +396,8 @@ and the default is used. If the file isn't valid JSON, the menu shows a
 | `GH_CONTROL_GH` | Use this `gh` executable |
 | `GH_CONTROL_SEARCH_PATH` | Folders to search for `gh` when it isn't on `PATH` (separated by `:`) |
 | `GH_CONTROL_NO_NOTIFY` | Any non-empty value turns notifications off |
+| `GH_CONTROL_NO_UPDATE_CHECK` | Any non-empty value turns the menu's daily background release check off |
+| `GH_CONTROL_REPO` | `owner/name` to check and update from, e.g. a fork (default `abdulahwahdi/gh-control`) |
 | `GH_CONFIG_DIR` / `XDG_CONFIG_HOME` | Honoured when locating gh's `hosts.yml`, as gh itself does |
 
 Menu-bar apps often start with a minimal `PATH`, so gh-control also looks for
@@ -449,6 +455,38 @@ such a repository keeps its author whichever account is active.
   global email belongs to someone else. `gh-control doctor` checks the same.
 - If `git` isn't installed, this step is skipped.
 
+## ⬆️ Updating
+
+When a newer release is out, the dropdown shows **⬆ Update now: gh-control
+vX.Y.Z** (plus a link to the release notes). Click it, or run:
+
+```sh
+gh-control update           # upgrade in place
+gh-control update --check   # only look
+gh-control update --dry-run # show what would be run
+```
+
+`gh-control update` detects how it was installed and upgrades the same way:
+
+| Installed with | Upgrade |
+| --- | --- |
+| pipx | `pipx install --force <release tarball>` |
+| pip | `python -m pip install --upgrade <release tarball>` (with `--user` outside a virtualenv) |
+| Plain copy (`install.sh` without pip/pipx) | The copy in `~/.local/share/gh-control` is replaced from the release tarball, downloaded through `gh api` |
+| Homebrew | `brew upgrade gh-control` |
+| Git checkout | Left untouched; it prints a `git pull` hint |
+
+When the installer can't tell, it prints the one-line installer command to
+run instead. Restart the tray app after updating if you use it.
+
+The latest release is looked up with
+`gh api repos/abdulahwahdi/gh-control/releases/latest` (drafts and
+prereleases are ignored). The menu does this in the background at most once a
+day and caches the result in `update-check.json` next to the config; it never
+waits for it. Turn the background check and the menu row off with
+`"check_updates": false` or `GH_CONTROL_NO_UPDATE_CHECK=1`. Set
+`GH_CONTROL_REPO=owner/name` to follow a fork.
+
 ## 🔒 Privacy and security
 
 - **No tokens are shown or stored.** gh-control uses only the account
@@ -457,7 +495,10 @@ such a repository keeps its author whichever account is active.
   of its own. The only GitHub request it makes for git identities is
   `gh api users/<login>`, run through gh on switch or `identity sync`. That
   reads public profile data (name and numeric ID) only; private emails are
-  never read, and only the noreply address is stored.
+  never read, and only the noreply address is stored. The only other request
+  is the release check, `gh api repos/abdulahwahdi/gh-control/releases/latest`,
+  at most once a day from the menu (turn it off with `"check_updates": false`)
+  or when you run `gh-control update`.
 - **SSH keys are untouched.** Switching changes gh's active account only.
   Your `~/.ssh` folder, SSH config and agent are never read or modified.
   If you use different SSH keys per account, keep using host aliases in
@@ -495,6 +536,7 @@ exits with status 1 if something stops gh-control from working.
 | ! `No git identity for: …` | `gh-control identity sync`, or set one with `gh-control identity set <login> --name … --email …` |
 | ! `Global git email is … but the active account … uses …` | `gh-control identity apply` |
 | ! `git not found; git identity switching is skipped` | Install git if you want commits to use the account's identity |
+| ! `gh-control vX.Y.Z is available` | `gh-control update` |
 | ! `notify-send not found` | Optional: `sudo apt install libnotify-bin` |
 | ! `gh-control is not on your PATH` | Add `~/.local/bin` to your `PATH` in `~/.profile` or `~/.zshrc` |
 
@@ -552,7 +594,11 @@ Hardly. Listing accounts and drawing the menu read gh's local `hosts.yml`
 and gh-control's own cache, with no network access. gh-control has no
 network code of its own: the only request is `gh api users/<login>`, run
 through gh when you switch to an account whose git identity isn't cached
-yet, or when you run `gh-control identity sync`.
+yet, or when you run `gh-control identity sync`. The only other request is
+the release check (`gh api repos/abdulahwahdi/gh-control/releases/latest`),
+which the menu starts in the background at most once a day and
+`gh-control update` runs on demand. Turn it off with `"check_updates": false`
+or `GH_CONTROL_NO_UPDATE_CHECK=1`.
 
 </details>
 

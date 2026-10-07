@@ -99,6 +99,22 @@ class Tray:
         cli.main(["identity"] + args)
         self.refresh()
 
+    def _update(self, args):
+        from gh_control import cli
+
+        cli.main(["update"] + args)
+        self.refresh()
+
+    def _add_update(self, gtk_menu, state):
+        update = state.get("update")
+        if update and update.get("newer"):
+            self._add(gtk_menu, "⬆ Update now: gh-control {}".format(update.get("latest")), lambda: self._update([]))
+            if update.get("url"):
+                url = update["url"]
+                self._add(gtk_menu, "Release notes for {}".format(update.get("latest")), lambda: self._open(url))
+        else:
+            self._add(gtk_menu, "Check for updates", lambda: self._update(["--check"]))
+
     def _add_git_identity(self, gtk_menu, state, active):
         email = active.get("git_email")
         login = active["login"]
@@ -158,6 +174,7 @@ class Tray:
         gtk_menu.append(Gtk.SeparatorMenuItem())
         self._add(gtk_menu, "Refresh", self.refresh)
         self._add(gtk_menu, "Open config", self._open_config)
+        self._add_update(gtk_menu, state)
         self._add(gtk_menu, "Quit", Gtk.main_quit)
         gtk_menu.show_all()
         self.indicator.set_menu(gtk_menu)

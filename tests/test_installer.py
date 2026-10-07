@@ -1,9 +1,11 @@
 import io
+import json
 import os
 import shutil
 import subprocess
 import sys
 import textwrap
+import time
 import unittest
 
 from helpers import ROOT, SAMPLE_CONFIG, GhTestCase
@@ -236,6 +238,39 @@ class DoctorTest(InstallerTestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("! Global git email is other@x.com but the active account alice-corp uses alice@corp.com", out)
         self.assertIn("gh-control identity apply", out)
+
+
+    def write_update_cache(self, latest):
+        self.write(
+            os.path.join(os.path.dirname(self.config), "update-check.json"),
+            json.dumps({"checked_at": int(time.time()), "latest": latest,
+                        "url": "https://example.com/r", "error": None}),
+        )
+
+    def test_newer_release_warns(self):
+        self.write_update_cache("v9.9.9")
+        code, out = self.call(installer.doctor, platform="linux")
+        self.assertEqual(code, 0, out)
+        self.assertIn("! gh-control v9.9.9 is available", out)
+        self.assertIn("gh-control update", out)
+        self.assertNotIn(["api"], [c[:1] for c in self.gh_calls()])
+
+    def test_up_to_date(self):
+        self.write_update_cache("v0.0.1")
+        code, out = self.call(installer.doctor, platform="linux")
+        self.assertEqual(code, 0, out)
+        self.assertIn("✓ gh-control is up to date (latest v0.0.1)", out)
+
+    def test_no_update_cache(self):
+        code, out = self.call(installer.doctor, platform="linux")
+        self.assertIn("gh-control update --check", out)
+        self.assertNotIn(["api"], [c[:1] for c in self.gh_calls()])
+
+    def test_newer_release_hidden_when_checks_disabled(self):
+        self.write_config({"check_updates": False})
+        self.write_update_cache("v9.9.9")
+        code, out = self.call(installer.doctor, platform="linux")
+        self.assertNotIn("is available", out)
 
 
 class DoctorNoGhTest(InstallerTestCase):

@@ -20,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fixes when it's missing or git's global email belongs to another account.
 - `gh-control doctor` checks for missing identities and a mismatched global
   git email (offline, warnings only).
+- `gh-control update [--check] [--dry-run]`: self-update to the latest
+  release, using the same method gh-control was installed with (pipx, pip,
+  plain copy or Homebrew; a git checkout gets a `git pull` hint). The
+  release is looked up with `gh api repos/<repo>/releases/latest`.
+- Menu and tray rows **Update now** (when a newer release is known, with a
+  release-notes link) and **Check for updates**.
+- A daily background release check started by the menu (detached, never
+  blocking; off with `GH_CONTROL_NO_UPDATE_CHECK=1`).
+- `check_updates` config key (default `true`).
+- `gh-control doctor` reports when a newer release is available (from the
+  cached check, no network).
 
 ### Changed
 

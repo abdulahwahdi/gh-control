@@ -6,10 +6,12 @@ bar always shows something useful.
 
 import json
 import os
+import subprocess
 import sys
+import time
 from typing import List, Optional
 
-from gh_control import __version__, core
+from gh_control import __version__, core, updater
 
 WARN_COLOR = "#d29922"
 FORMATS = ("swiftbar", "argos", "json")
@@ -41,11 +43,13 @@ def build_state(cfg: Optional[core.Config] = None) -> dict:
         "config_error": None,
         "git_global": None,
         "set_git_identity": True,
+        "update": None,
     }
     try:
         cfg = cfg or core.load_config()
         state["host"] = cfg.host
         state["config_error"] = cfg.error
+        state["update"] = _update_state(cfg)
         core.require_gh()
         accounts = core.list_accounts(cfg)
         if not accounts:
@@ -64,6 +68,53 @@ def build_state(cfg: Optional[core.Config] = None) -> dict:
     except Exception as exc:  # the bar must never show a traceback
         state["error"], state["error_kind"] = (str(exc) or exc.__class__.__name__), "error"
     return state
+
+
+def _update_state(cfg: core.Config) -> Optional[dict]:
+    """Cached release info for the menu (no network); never raises."""
+    if not cfg.check_updates:
+        return None
+    update = None
+    try:
+        info = updater.load_cached()
+        if info is not None:
+            update = {
+                "latest": info.tag,
+                "url": info.url,
+                "newer": info.newer,
+                "error": info.error,
+                "method": updater.install_method(),
+            }
+        _maybe_background_check(cfg)
+    except Exception:  # update problems must never break the bar
+        pass
+    return update
+
+
+def _maybe_background_check(cfg: core.Config) -> None:
+    """Start a detached `update --check` at most once per check interval."""
+    if not cfg.check_updates or os.environ.get("GH_CONTROL_NO_UPDATE_CHECK"):
+        return
+    if not updater.cache_is_stale():
+        return
+    # Mark the cache as checked first so concurrent refreshes don't spawn duplicates.
+    cached = updater.load_cached()
+    now = int(time.time())
+    if cached is not None:
+        cached.checked_at = now
+        updater.save_cached(cached)
+    else:
+        updater.save_cached(updater.ReleaseInfo(tag=None, url=None, checked_at=now))
+    try:
+        subprocess.Popen(
+            command_args() + ["update", "--check", "--quiet"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError:
+        pass
 
 
 # --------------------------------------------------------------------------
@@ -142,6 +193,26 @@ def _render_error(w: _Writer, state: dict, cmd: List[str]) -> None:
     w.separator()
     w.item("Refresh", refresh=True)
     w.item("Open config", run=cmd + ["open-config"])
+    _render_update(w, state, cmd)
+    w.item("gh-control {}".format(state.get("version", __version__)), size=11)
+
+
+def _render_update(w: _Writer, state: dict, cmd: List[str]) -> None:
+    update = state.get("update")
+    if update and update.get("newer"):
+        latest = update.get("latest")
+        # Shown in a terminal so pip/pipx/brew output and errors are visible.
+        w.item(
+            "⬆ Update now: gh-control {}".format(latest),
+            run=cmd + ["update"],
+            terminal="true",
+            refresh=True,
+            color=WARN_COLOR,
+        )
+        if update.get("url"):
+            w.item("Release notes for {}".format(latest), href=update["url"])
+    else:
+        w.item("Check for updates", run=cmd + ["update", "--check"], refresh=True)
 
 
 def _render_git_identity(w: _Writer, state: dict, active: dict, cmd: List[str]) -> None:
@@ -215,6 +286,7 @@ def render(fmt: str, state: Optional[dict] = None) -> str:
             href="https://{}/{}".format(state["host"], active["login"]),
         )
     w.item("Open config", run=cmd + ["open-config"])
+    _render_update(w, state, cmd)
     w.item("gh-control {}".format(state.get("version", __version__)), size=11)
     return "\n".join(w.lines)
 

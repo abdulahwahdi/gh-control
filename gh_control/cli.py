@@ -232,6 +232,7 @@ def _sample_config() -> dict:
         "notify": True,
         "set_git_identity": True,
         "auto_git_identity": True,
+        "check_updates": True,
         "accounts": accounts,
     }
 
