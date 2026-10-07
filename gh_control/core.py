@@ -60,6 +60,10 @@ class Account:
     sfimage: Optional[str] = None
     git_name: Optional[str] = None
     git_email: Optional[str] = None
+    # Where the identity came from: "config", "github", "mixed" or None.
+    git_source: Optional[str] = None
+    # Set by switch() when the identity could not be fetched; not serialised.
+    git_warning: Optional[str] = None
 
     def __post_init__(self):
         if not self.label:
@@ -75,7 +79,11 @@ class Account:
             "sfimage": self.sfimage,
             "git_name": self.git_name,
             "git_email": self.git_email,
+            "git_source": self.git_source,
         }
+
+    def has_git_identity(self) -> bool:
+        return bool(self.git_name and self.git_email)
 
 
 @dataclass
@@ -84,6 +92,7 @@ class Config:
     accounts: Dict[str, dict] = field(default_factory=dict)
     notify: bool = True
     set_git_identity: bool = True
+    auto_git_identity: bool = True
     path: str = ""
     error: Optional[str] = None
 
@@ -171,6 +180,8 @@ def load_config() -> Config:
         cfg.notify = data["notify"]
     if isinstance(data.get("set_git_identity"), bool):
         cfg.set_git_identity = data["set_git_identity"]
+    if isinstance(data.get("auto_git_identity"), bool):
+        cfg.auto_git_identity = data["auto_git_identity"]
     return cfg
 
 
@@ -180,14 +191,37 @@ def _str_or_none(value) -> Optional[str]:
     return None
 
 
-def _decorate(account: Account, cfg: Config) -> Account:
+def _fill_identity(account: Account, cfg: Config, cached: Optional[dict]) -> None:
+    """Set git_name/git_email from config, then `cached`, and git_source."""
+    extra = cfg.accounts.get(account.login, {})
+    sources = set()
+    for attr, cache_key in (("git_name", "name"), ("git_email", "email")):
+        value = _str_or_none(extra.get(attr))
+        if value:
+            sources.add("config")
+        elif cached:
+            value = _str_or_none(cached.get(cache_key))
+            if value:
+                sources.add("github")
+        setattr(account, attr, value)
+    if len(sources) > 1:
+        account.git_source = "mixed"
+    else:
+        account.git_source = sources.pop() if sources else None
+
+
+def _decorate(account: Account, cfg: Config, cache: Optional[dict] = None) -> Account:
     extra = cfg.accounts.get(account.login, {})
     account.label = _str_or_none(extra.get("label")) or account.login
     account.icon = _str_or_none(extra.get("icon")) or DEFAULT_ICON
     account.color = _str_or_none(extra.get("color"))
     account.sfimage = _str_or_none(extra.get("sfimage"))
-    account.git_name = _str_or_none(extra.get("git_name"))
-    account.git_email = _str_or_none(extra.get("git_email"))
+    cached = None
+    if cfg.auto_git_identity and cache:
+        host_cache = cache.get(cfg.host)
+        if isinstance(host_cache, dict) and isinstance(host_cache.get(account.login), dict):
+            cached = host_cache[account.login]
+    _fill_identity(account, cfg, cached)
     return account
 
 
@@ -357,7 +391,8 @@ def list_accounts(cfg: Optional[Config] = None) -> List[Account]:
     # Accounts named in the config come first, in config order.
     order = {login: i for i, login in enumerate(cfg.accounts)}
     accounts.sort(key=lambda a: order.get(a.login, len(order)))
-    return [_decorate(a, cfg) for a in accounts]
+    cache = load_identity_cache() if cfg.auto_git_identity else None
+    return [_decorate(a, cfg, cache) for a in accounts]
 
 
 def active_account(cfg: Optional[Config] = None) -> Optional[Account]:
@@ -384,30 +419,148 @@ def next_account(cfg: Optional[Config] = None) -> Account:
     return accounts[0]
 
 
-def apply_git_identity(account: Account) -> List[str]:
-    """Set global git user.name/user.email if configured. Returns what was set."""
-    changes = []
+# --------------------------------------------------------------------------
+# Git identity
+
+
+def identities_path() -> str:
+    return os.path.join(os.path.dirname(config_path()), "identities.json")
+
+
+def load_identity_cache() -> dict:
+    """Read the cached GitHub identities. Never raises."""
+    try:
+        with open(identities_path(), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_identity_cache(data: dict) -> None:
+    path = identities_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+    except OSError as exc:
+        raise GhControlError("Cannot write {}: {}".format(path, exc))
+
+
+def noreply_email(login: str, user_id: int, host: str) -> str:
+    if host == DEFAULT_HOST:
+        return "{}+{}@users.noreply.github.com".format(user_id, login)
+    return "{}+{}@users.noreply.{}".format(user_id, login, host)
+
+
+def fetch_github_identity(login: str, host: str) -> dict:
+    """Fetch the public name and noreply email of `login` via `gh api`."""
+    proc = _run_gh(["api", "users/{}".format(login), "--hostname", host])
+    if proc.returncode != 0:
+        raise GhControlError(
+            "gh api users/{} failed: {}".format(login, proc.stderr.strip())
+        )
+    try:
+        data = json.loads(proc.stdout)
+    except ValueError:
+        raise GhControlError("gh api users/{} returned invalid JSON".format(login))
+    user_id = data.get("id") if isinstance(data, dict) else None
+    if not isinstance(user_id, int) or isinstance(user_id, bool):
+        raise GhControlError("gh api users/{} returned no user id".format(login))
+    return {
+        "name": _str_or_none(data.get("name")) or login,
+        "email": noreply_email(login, user_id, host),
+        "id": user_id,
+    }
+
+
+def ensure_git_identity(account: Account, cfg: Config, refresh: bool = False) -> Optional[str]:
+    """Fill missing identity fields from GitHub and cache the result.
+
+    Returns a warning message if the fetch or the cache write failed, else
+    None. Values from the config always win over fetched ones.
+    """
+    if not cfg.auto_git_identity or (account.has_git_identity() and not refresh):
+        return None
+    try:
+        fetched = fetch_github_identity(account.login, cfg.host)
+    except GhControlError as exc:
+        return str(exc)
+    _fill_identity(account, cfg, fetched)
+    cache = load_identity_cache()
+    host_cache = cache.get(cfg.host)
+    if not isinstance(host_cache, dict):
+        host_cache = cache[cfg.host] = {}
+    host_cache[account.login] = fetched
+    try:
+        save_identity_cache(cache)
+    except GhControlError as exc:
+        return str(exc)
+    return None
+
+
+def _run_git(git: str, args: List[str], cwd: Optional[str] = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [git] + args,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        cwd=cwd,
+    )
+
+
+def apply_git_identity(account: Account, scope: str = "global", cwd: Optional[str] = None) -> List[str]:
+    """Set git user.name/user.email globally or for one repo. Returns what was set."""
+    if scope not in ("global", "local"):
+        raise GhControlError("Unknown git config scope: {}".format(scope))
+    changes: List[str] = []
     git = shutil.which("git")
     if not git:
+        if scope == "local":
+            raise GhControlError("git not found")
         return changes
+    if scope == "local":
+        where = cwd or os.getcwd()
+        try:
+            proc = _run_git(git, ["rev-parse", "--is-inside-work-tree"], cwd=where)
+            inside = proc.returncode == 0 and proc.stdout.strip() == "true"
+        except OSError:
+            inside = False
+        if not inside:
+            raise GhControlError("Not inside a git repository: {}".format(where))
     for key, value in (("user.name", account.git_name), ("user.email", account.git_email)):
         if not value:
             continue
-        proc = subprocess.run(
-            [git, "config", "--global", key, value],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-        )
+        proc = _run_git(git, ["config", "--" + scope, key, value], cwd=cwd)
         if proc.returncode != 0:
-            raise SwitchError(
-                "Switched gh account, but git config {} failed: {}".format(
-                    key, proc.stderr.strip()
-                )
-            )
+            message = "git config --{} {} failed: {}".format(scope, key, proc.stderr.strip())
+            if scope == "global":
+                raise SwitchError("Switched gh account, but " + message)
+            raise GhControlError(message)
         changes.append("{}={}".format(key, value))
     return changes
+
+
+def read_git_identity(scope: Optional[str] = None, cwd: Optional[str] = None) -> dict:
+    """Return {"name", "email"} as git sees them (None when unset). Never raises.
+
+    `scope` is "global", "local" or None for the effective value in `cwd`.
+    """
+    result: Dict[str, Optional[str]] = {"name": None, "email": None}
+    git = shutil.which("git")
+    if not git:
+        return result
+    flags = ["--" + scope] if scope else []
+    for name, key in (("name", "user.name"), ("email", "user.email")):
+        try:
+            proc = _run_git(git, ["config"] + flags + ["--get", key], cwd=cwd)
+        except OSError:
+            continue
+        if proc.returncode == 0:
+            result[name] = _str_or_none(proc.stdout)
+    return result
 
 
 def notify(title: str, message: str) -> None:
@@ -466,6 +619,8 @@ def switch(user: str, cfg: Optional[Config] = None, notify_user: Optional[bool] 
                 hint = " (gh >= 2.40 is required for account switching)"
             raise SwitchError("gh auth switch failed{}: {}".format(hint, detail))
     if cfg.set_git_identity:
+        # Runs after the switch; users/<login> is public, so any token works.
+        target.git_warning = ensure_git_identity(target, cfg)
         apply_git_identity(target)
     target.active = True
     for account in accounts:

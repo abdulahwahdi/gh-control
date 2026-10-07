@@ -27,11 +27,12 @@ HOSTS_YML = textwrap.dedent(
 )
 
 # A tiny stand-in for gh: logs its arguments, answers `auth status`, and
-# implements `auth switch` by rewriting the `user:` line of hosts.yml.
+# implements `auth switch` by rewriting the `user:` line of hosts.yml, and
+# answers `api users/<login>` (fails when FAKE_GH_API_FAIL is set).
 FAKE_GH = textwrap.dedent(
     """\
     #!{python}
-    import os, re, sys
+    import json, os, re, sys
     args = sys.argv[1:]
     log = os.environ.get("FAKE_GH_LOG")
     if log:
@@ -55,6 +56,15 @@ FAKE_GH = textwrap.dedent(
             sys.exit(1)
         text = re.sub(r"^(    user: ).*$", r"\\g<1>" + user, text, flags=re.M)
         open(hosts, "w").write(text)
+        sys.exit(0)
+    if args[:1] == ["api"] and len(args) > 1 and args[1].startswith("users/"):
+        login = args[1].split("/", 1)[1]
+        if os.environ.get("FAKE_GH_API_FAIL"):
+            sys.stderr.write("HTTP 404\\n")
+            sys.exit(1)
+        ids = {{"alice-corp": 101, "alice": 102}}
+        names = {{"alice-corp": "Alice Corp", "alice": None}}
+        sys.stdout.write(json.dumps({{"login": login, "id": ids.get(login, 999), "name": names.get(login)}}))
         sys.exit(0)
     sys.stderr.write("fake gh: unsupported " + " ".join(args) + "\\n")
     sys.exit(2)
