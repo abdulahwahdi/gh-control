@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -63,6 +64,50 @@ class MenuRenderTest(GhTestCase):
     def test_invalid_config_shows_warning_row(self):
         self.write(self.config, "{oops")
         self.assertTrue(any(l.startswith("⚠ Cannot read") for l in self.lines("swiftbar")))
+
+
+@unittest.skipUnless(shutil.which("git"), "git not available")
+class MenuGitIdentityTest(GhTestCase):
+    def lines(self, fmt):
+        return menu.render(fmt).splitlines()
+
+    def test_identity_row_from_config(self):
+        self.write_config(SAMPLE_CONFIG)
+        lines = self.lines("swiftbar")
+        self.assertTrue(any(l.startswith("Git: Alice Corp <alice@corp.com>") for l in lines), lines)
+        self.assertFalse(any("No git identity" in l for l in lines))
+        self.assertFalse(any("git uses" in l for l in lines))
+
+    def test_missing_identity_offers_sync(self):
+        lines = self.lines("swiftbar")
+        row = next(l for l in lines if "No git identity for alice-corp" in l)
+        self.assertIn("param1=identity", row)
+        self.assertIn("param2=sync", row)
+        self.assertIn("param4=alice-corp", row)
+        self.assertNotIn(["api"], [c[:1] for c in self.gh_calls()])
+
+    def test_mismatch_offers_apply(self):
+        self.write_config(SAMPLE_CONFIG)
+        self.write(self.gitconfig, "[user]\n\temail = other@x.com\n")
+        row = next(l for l in self.lines("swiftbar") if l.startswith("⚠ git uses other@x.com"))
+        self.assertIn("param1=identity", row)
+        self.assertIn("param2=apply", row)
+
+    def test_no_mismatch_warning_when_switching_disabled(self):
+        self.write_config(dict(SAMPLE_CONFIG, set_git_identity=False))
+        self.write(self.gitconfig, "[user]\n\temail = other@x.com\n")
+        self.assertFalse(any("git uses" in l for l in self.lines("swiftbar")))
+
+    def test_json_has_git_global(self):
+        self.write(self.gitconfig, "[user]\n\tname = Other\n\temail = other@x.com\n")
+        data = json.loads(menu.render("json"))
+        self.assertEqual(data["git_global"], {"name": "Other", "email": "other@x.com"})
+        self.assertTrue(data["set_git_identity"])
+
+    def test_argos_escapes_email(self):
+        self.write_config(SAMPLE_CONFIG)
+        lines = self.lines("argos")
+        self.assertTrue(any(l.startswith("Git: Alice Corp &lt;alice@corp.com&gt;") for l in lines), lines)
 
 
 class NotLoggedInMenuTest(GhTestCase):

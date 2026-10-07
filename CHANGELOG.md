@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Automatic git identity for every account: the GitHub name (or login) and
+  the `ID+login@users.noreply.github.com` email, fetched with
+  `gh api users/<login>` and cached in `identities.json`. Config
+  `git_name` / `git_email` still override each field.
+- `gh-control identity show|sync|set|apply [--local]` to view, fetch, save
+  and apply identities, globally or for a single repository.
+- `auto_git_identity` config key (default `true`).
+- Menu and tray show the active account's git identity, with one-click
+  fixes when it's missing or git's global email belongs to another account.
+- `gh-control doctor` checks for missing identities and a mismatched global
+  git email (offline, warnings only).
+
+### Changed
+
+- Switching now writes a git identity even when the account has no
+  `git_name` / `git_email` in the config. Set `"auto_git_identity": false`
+  to restore the old behaviour.
+
 ## [0.1.0] - 2026-10-05
 
 ### Added

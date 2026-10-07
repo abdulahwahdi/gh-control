@@ -1,11 +1,12 @@
 import io
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
 import unittest
 
-from helpers import ROOT, GhTestCase
+from helpers import ROOT, SAMPLE_CONFIG, GhTestCase
 
 from gh_control import installer
 
@@ -209,6 +210,32 @@ class DoctorTest(InstallerTestCase):
         self.write(self.config, "{not json")
         code, out = self.call(installer.doctor, platform="linux")
         self.assertIn("! Config problem", out)
+
+    @unittest.skipUnless(shutil.which("git"), "git not available")
+    def test_missing_git_identity_warns_without_network(self):
+        code, out = self.call(installer.doctor, platform="linux")
+        self.assertEqual(code, 0, out)
+        self.assertIn("! No git identity for: alice-corp, alice", out)
+        self.assertIn("gh-control identity sync", out)
+        self.assertNotIn(["api"], [c[:1] for c in self.gh_calls()])
+
+    @unittest.skipUnless(shutil.which("git"), "git not available")
+    def test_git_identity_from_config(self):
+        self.write_config(SAMPLE_CONFIG)
+        self.write(self.gitconfig, "[user]\n\temail = alice@corp.com\n")
+        code, out = self.call(installer.doctor, platform="linux")
+        self.assertEqual(code, 0, out)
+        self.assertIn("✓ Git identity set for all 2 account(s)", out)
+        self.assertNotIn("Global git email", out)
+
+    @unittest.skipUnless(shutil.which("git"), "git not available")
+    def test_global_git_email_mismatch_warns(self):
+        self.write_config(SAMPLE_CONFIG)
+        self.write(self.gitconfig, "[user]\n\temail = other@x.com\n")
+        code, out = self.call(installer.doctor, platform="linux")
+        self.assertEqual(code, 0, out)
+        self.assertIn("! Global git email is other@x.com but the active account alice-corp uses alice@corp.com", out)
+        self.assertIn("gh-control identity apply", out)
 
 
 class DoctorNoGhTest(InstallerTestCase):

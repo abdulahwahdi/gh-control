@@ -57,7 +57,7 @@ extra login and no dependencies beyond Python 3 and `gh`.
 - 🖱️ **One-click switching**: pick an account from the dropdown, or use *Toggle to next account*.
 - 🍎 **macOS**: [SwiftBar](https://swiftbar.app) or [xbar](https://xbarapp.com) plugin, with SF Symbols support in SwiftBar.
 - 🐧 **Linux**: [Argos](https://extensions.gnome.org/extension/1176/argos/) plugin for the GNOME top bar, or an AppIndicator tray icon for KDE, XFCE, Cinnamon, MATE and others.
-- 🪪 **Optional git identity**: set `git config --global user.name` / `user.email` for each account automatically when you switch.
+- 🪪 **Git identity for every account**: switching also sets `git config --global user.name` / `user.email`, using your GitHub name and noreply email (fetched once and cached) or values from the config. Per-repository identities too, with `gh-control identity apply --local`.
 - 🔔 **Notifications** on switch (`osascript` on macOS, `notify-send` on Linux), skipped if not available.
 - ⚡ **Fast and offline**: reads gh's `hosts.yml` directly and only falls back to `gh auth status` when needed.
 - 🔒 **Safe**: never prints tokens and never touches your SSH keys.
@@ -80,6 +80,7 @@ GitHub accounts on github.com
 ✓ 💼 Work — alice-corp            ← active account
      🏠 Personal — alice           ← click to switch
 Toggle to next account
+Git: Alice Example <alice@corp.example>   ← identity git uses for commits
 ───────────────────────────────
 Refresh
 Open github.com/alice-corp
@@ -89,6 +90,8 @@ gh-control 0.1.0
 
 If `gh` is missing or nobody is logged in, the bar shows `⚠ gh` and the
 dropdown explains what to do. You never get a traceback in your menu bar.
+If the active account has no git identity yet, or git's global email belongs
+to another account, a `⚠` row offers a one-click fix.
 
 ## 🚀 Quick start
 
@@ -298,6 +301,10 @@ Support* extension.
 | `gh-control current [--json]` | Print the active login |
 | `gh-control switch <user> [--no-notify]` | Make `<user>` the active account (and apply its git identity) |
 | `gh-control toggle [--no-notify]` | Switch to the next account in the list |
+| `gh-control identity [show] [--json]` | Show each account's git identity and where it comes from, plus what git uses now |
+| `gh-control identity sync [--user LOGIN] [--force]` | Fetch names and noreply emails from GitHub and cache them |
+| `gh-control identity set <login> [--name N] [--email E]` | Save an identity for an account in the config (an empty value removes it) |
+| `gh-control identity apply [--user LOGIN] [--local] [--path DIR]` | Write an account's identity to git: globally, or with `--local` for one repository |
 | `gh-control menu [--format swiftbar\|argos\|json]` | Print the top-bar menu (used by the plugins) |
 | `gh-control open-config [--print-path]` | Create the config file if missing and open it |
 | `gh-control install [--frontend F] [--plugin-dir DIR] [--dry-run]` | Install the top-bar plugin; `F` is `auto`, `swiftbar`, `xbar`, `argos` or `tray` |
@@ -311,6 +318,7 @@ $ gh-control list
   🏠 alice  (Personal)
 $ gh-control switch alice
 Switched to 🏠 alice (Personal)
+Git identity: alice <102+alice@users.noreply.github.com>
 $ gh-control current
 alice
 ```
@@ -335,6 +343,7 @@ accounts, and opens it. A full example:
   "host": "github.com",
   "notify": true,
   "set_git_identity": true,
+  "auto_git_identity": true,
   "accounts": {
     "alice-corp": {
       "label": "Work",
@@ -360,14 +369,15 @@ accounts, and opens it. A full example:
 | --- | --- | --- |
 | `host` | `github.com` | The gh host whose accounts are shown and switched (e.g. a GitHub Enterprise host) |
 | `notify` | `true` | Show a desktop notification after switching |
-| `set_git_identity` | `true` | Apply `git_name` / `git_email` when switching (only for accounts that set them) |
+| `set_git_identity` | `true` | Write the account's git identity to `git config --global` when switching |
+| `auto_git_identity` | `true` | Fill missing `git_name` / `git_email` from GitHub (name and noreply email, cached). `false` uses only the config values, as before |
 | `accounts` | `{}` | Per-account settings, keyed by GitHub login. Accounts listed here come first in the menu, in this order |
 | `accounts.<login>.label` | the login | Friendly name shown in the dropdown, e.g. `Work — alice-corp` |
 | `accounts.<login>.icon` | `●` | Text or emoji shown before the login, in the bar and in the dropdown |
 | `accounts.<login>.color` | none | Colour for the bar title and the active row, e.g. `#1f6feb` (SwiftBar, xbar, Argos) |
 | `accounts.<login>.sfimage` | none | SF Symbol name for the bar title (SwiftBar only; ignored elsewhere) |
-| `accounts.<login>.git_name` | none | Value for `git config --global user.name` on switch |
-| `accounts.<login>.git_email` | none | Value for `git config --global user.email` on switch |
+| `accounts.<login>.git_name` | GitHub name, or the login | Value for `git config --global user.name` on switch |
+| `accounts.<login>.git_email` | GitHub noreply email | Value for `git config --global user.email` on switch |
 
 Every key is optional. A missing key or a value of the wrong type is ignored
 and the default is used. If the file isn't valid JSON, the menu shows a
@@ -393,18 +403,50 @@ Menu-bar apps often start with a minimal `PATH`, so gh-control also looks for
 ## 🪪 Git identity switching
 
 `gh auth switch` changes the account `gh` uses (and git over HTTPS, if gh is
-your git credential helper via `gh auth setup-git`). It does **not** change the name and email recorded
-in your commits. If you set `git_name` and/or `git_email` for an account,
-every switch to that account also runs:
+your git credential helper via `gh auth setup-git`). It does **not** change
+the name and email recorded in your commits. gh-control does: every switch
+also runs
 
 ```sh
-git config --global user.name  "<git_name>"
-git config --global user.email "<git_email>"
+git config --global user.name  "<name>"
+git config --global user.email "<email>"
 ```
 
-- Only the keys you set are written. Accounts without them leave your git config alone.
-- Set `"set_git_identity": false` to turn this off everywhere.
-- Repository-level settings (`git config user.email` inside a repo, or `includeIf` rules) still win over the global value, as usual in git.
+Every account gets an identity automatically, so commits never keep the
+previous account's author:
+
+- **From GitHub.** The first time it's needed (on switch, or with
+  `gh-control identity sync`), gh-control asks `gh api users/<login>` for the
+  account's public name and numeric ID. The name is your GitHub name (or the
+  login if you haven't set one), and the email is your
+  [noreply address](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-email-preferences/setting-your-commit-email-address),
+  `ID+login@users.noreply.github.com`. The result is cached in
+  `~/.config/gh-control/identities.json`, so later switches work offline.
+- **From the config.** `git_name` / `git_email` for an account override the
+  GitHub values, field by field. Set them by hand or with
+  `gh-control identity set <login> --name "Alice" --email alice@corp.example`.
+
+```console
+$ gh-control identity
+* 💼 alice-corp  Alice Example <alice@corp.example>  (config)
+  🏠 alice  alice <102+alice@users.noreply.github.com>  (github)
+git global: Alice Example <alice@corp.example>
+```
+
+**Per repository.** Run `gh-control identity apply --local` inside a
+repository (or pass `--path DIR`) to write the active account's identity to
+that repository's `.git/config` only; add `--user <login>` to use another
+account. Repository-level settings (`git config user.email` inside a repo,
+or `includeIf` rules) still win over the global value, as usual in git, so
+such a repository keeps its author whichever account is active.
+
+- Set `"auto_git_identity": false` to use only the config values (accounts
+  without them leave your git config alone, as in earlier versions).
+- Set `"set_git_identity": false` to never write git config on switch.
+- If GitHub can't be reached, the switch still happens and whatever is
+  already known is applied; a warning tells you to run `gh-control identity sync` later.
+- The menu shows the identity of the active account and warns when git's
+  global email belongs to someone else. `gh-control doctor` checks the same.
 - If `git` isn't installed, this step is skipped.
 
 ## 🔒 Privacy and security
@@ -412,7 +454,10 @@ git config --global user.email "<git_email>"
 - **No tokens are shown or stored.** gh-control uses only the account
   names from gh's `hosts.yml`, read locally with no network access. It never prints,
   copies or sends your OAuth tokens anywhere, and it has no network code
-  of its own.
+  of its own. The only GitHub request it makes for git identities is
+  `gh api users/<login>`, run through gh on switch or `identity sync`. That
+  reads public profile data (name and numeric ID) only; private emails are
+  never read, and only the noreply address is stored.
 - **SSH keys are untouched.** Switching changes gh's active account only.
   Your `~/.ssh` folder, SSH config and agent are never read or modified.
   If you use different SSH keys per account, keep using host aliases in
@@ -447,6 +492,9 @@ exits with status 1 if something stops gh-control from working.
 | ! `Top-bar plugin not installed` / `Broken plugin link` | `gh-control install` (safe to re-run) |
 | ! `SwiftBar / xbar not found` | `brew install --cask swiftbar` |
 | ! `Neither Argos nor PyGObject (tray) found` | Install the [Argos extension](https://extensions.gnome.org/extension/1176/argos/) (GNOME) or the tray packages above |
+| ! `No git identity for: …` | `gh-control identity sync`, or set one with `gh-control identity set <login> --name … --email …` |
+| ! `Global git email is … but the active account … uses …` | `gh-control identity apply` |
+| ! `git not found; git identity switching is skipped` | Install git if you want commits to use the account's identity |
 | ! `notify-send not found` | Optional: `sudo apt install libnotify-bin` |
 | ! `gh-control is not on your PATH` | Add `~/.local/bin` to your `PATH` in `~/.profile` or `~/.zshrc` |
 
@@ -493,15 +541,18 @@ or `GITHUB_TOKEN` environment variable overrides the active account for
 
 You can, and gh-control uses it under the hood. What gh-control adds is
 seeing the active account at all times, switching with one click,
-per-account labels and colours, and optional git identity switching.
+per-account labels and colours, and a git identity for every account.
 
 </details>
 
 <details>
 <summary><b>Does it need network access?</b></summary>
 
-No. Listing accounts reads gh's local `hosts.yml`. Only `gh` itself talks to
-GitHub, as it always does.
+Hardly. Listing accounts and drawing the menu read gh's local `hosts.yml`
+and gh-control's own cache, with no network access. gh-control has no
+network code of its own: the only request is `gh api users/<login>`, run
+through gh when you switch to an account whose git identity isn't cached
+yet, or when you run `gh-control identity sync`.
 
 </details>
 

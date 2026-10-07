@@ -93,6 +93,31 @@ class Tray:
 
         cli.main(["open-config"])
 
+    def _identity(self, args):
+        from gh_control import cli
+
+        cli.main(["identity"] + args)
+        self.refresh()
+
+    def _add_git_identity(self, gtk_menu, state, active):
+        email = active.get("git_email")
+        login = active["login"]
+        if email:
+            self._add(gtk_menu, "Git: {} <{}>".format(active.get("git_name") or login, email), sensitive=False)
+        else:
+            self._add(
+                gtk_menu,
+                "⚠ No git identity for {} — fetch from GitHub".format(login),
+                lambda: self._identity(["sync", "--user", login]),
+            )
+        global_email = (state.get("git_global") or {}).get("email")
+        if state.get("set_git_identity") and email and global_email and global_email != email:
+            self._add(
+                gtk_menu,
+                "⚠ git uses {} — apply {}'s identity".format(global_email, login),
+                lambda: self._identity(["apply"]),
+            )
+
     def refresh(self):
         Gtk = self.Gtk
         state = menu.build_state()
@@ -122,6 +147,8 @@ class Tray:
                     ),
                 )
                 gtk_menu.append(item)
+            if active:
+                self._add_git_identity(gtk_menu, state, active)
             if state["config_error"]:
                 self._add(gtk_menu, "⚠ " + state["config_error"], sensitive=False)
             gtk_menu.append(Gtk.SeparatorMenuItem())

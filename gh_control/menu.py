@@ -39,6 +39,8 @@ def build_state(cfg: Optional[core.Config] = None) -> dict:
         "error_kind": None,
         "config_path": core.config_path(),
         "config_error": None,
+        "git_global": None,
+        "set_git_identity": True,
     }
     try:
         cfg = cfg or core.load_config()
@@ -53,6 +55,8 @@ def build_state(cfg: Optional[core.Config] = None) -> dict:
         state["accounts"] = [a.to_dict() for a in accounts]
         active = next((a for a in accounts if a.active), None)
         state["active"] = active.login if active else None
+        state["set_git_identity"] = cfg.set_git_identity
+        state["git_global"] = core.read_git_identity("global")
     except core.GhNotFoundError as exc:
         state["error"], state["error_kind"] = str(exc), "gh-missing"
     except core.NotLoggedInError as exc:
@@ -140,6 +144,27 @@ def _render_error(w: _Writer, state: dict, cmd: List[str]) -> None:
     w.item("Open config", run=cmd + ["open-config"])
 
 
+def _render_git_identity(w: _Writer, state: dict, active: dict, cmd: List[str]) -> None:
+    email = active.get("git_email")
+    if email:
+        w.item("Git: {} <{}>".format(active.get("git_name") or active["login"], email), size=12)
+    else:
+        w.item(
+            "⚠ No git identity for {} — fetch from GitHub".format(active["login"]),
+            run=cmd + ["identity", "sync", "--user", active["login"]],
+            refresh=True,
+            color=WARN_COLOR,
+        )
+    global_email = (state.get("git_global") or {}).get("email")
+    if state.get("set_git_identity") and email and global_email and global_email != email:
+        w.item(
+            "⚠ git uses {} — apply {}'s identity".format(global_email, active["login"]),
+            run=cmd + ["identity", "apply"],
+            refresh=True,
+            color=WARN_COLOR,
+        )
+
+
 def render(fmt: str, state: Optional[dict] = None) -> str:
     if fmt not in FORMATS:
         raise ValueError("Unknown menu format: {}".format(fmt))
@@ -178,6 +203,8 @@ def render(fmt: str, state: Optional[dict] = None) -> str:
         )
     if len(accounts) > 1:
         w.item("Toggle to next account", run=cmd + ["toggle"], refresh=True)
+    if active:
+        _render_git_identity(w, state, active, cmd)
     if state.get("config_error"):
         w.item("⚠ " + state["config_error"], color=WARN_COLOR)
     w.separator()
