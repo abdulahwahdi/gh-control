@@ -185,6 +185,43 @@ def load_config() -> Config:
     return cfg
 
 
+def update_account_config(login: str, updates: dict) -> str:
+    """Set (or, for "" values, remove) keys of accounts.<login> in the config.
+
+    Other keys and the account order are preserved. An unreadable config
+    raises instead of being overwritten. Returns the config path.
+    """
+    path = config_path()
+    data: dict = {}
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError) as exc:
+            raise GhControlError("Cannot read {}: {}".format(path, exc))
+        if not isinstance(data, dict):
+            raise GhControlError("{} must contain a JSON object".format(path))
+    accounts = data.get("accounts")
+    if not isinstance(accounts, dict):
+        accounts = data["accounts"] = {}
+    entry = accounts.get(login)
+    if not isinstance(entry, dict):
+        entry = accounts[login] = {}
+    for key, value in updates.items():
+        if value == "":
+            entry.pop(key, None)
+        else:
+            entry[key] = value
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+    except OSError as exc:
+        raise GhControlError("Cannot write {}: {}".format(path, exc))
+    return path
+
+
 def _str_or_none(value) -> Optional[str]:
     if isinstance(value, str) and value.strip():
         return value.strip()
