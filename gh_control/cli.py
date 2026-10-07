@@ -13,7 +13,7 @@ import subprocess
 import sys
 from typing import List, Optional
 
-from gh_control import __version__, core, installer, menu
+from gh_control import __version__, core, installer, menu, updater
 
 
 def _print_account(account: core.Account) -> None:
@@ -268,6 +268,35 @@ def cmd_doctor(args) -> int:
     return installer.doctor()
 
 
+def _update_check(args) -> int:
+    info = updater.check(force=True)
+    if args.json:
+        data = info.to_dict()
+        data.update(current=__version__, method=updater.install_method(), newer=info.newer)
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    elif args.quiet:
+        pass
+    elif not info.tag:
+        print("No release published yet")
+    elif info.newer:
+        print("Update available: {} -> {}  ({})\nRun: gh-control update".format(
+            __version__, info.tag, info.url or updater.repo()))
+    else:
+        print("gh-control {} is up to date".format(__version__))
+    return 0
+
+
+def cmd_update(args) -> int:
+    try:
+        if args.check:
+            return _update_check(args)
+        return updater.run_update(dry_run=args.dry_run)
+    except core.GhControlError:
+        if args.quiet:
+            return 1
+        raise
+
+
 def build_parser()-> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gh-control",
@@ -337,6 +366,13 @@ def build_parser()-> argparse.ArgumentParser:
 
     p = sub.add_parser("doctor", help="check the setup and suggest fixes")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("update", help="check for and install the latest gh-control release")
+    p.add_argument("--check", action="store_true", help="only check, do not install")
+    p.add_argument("--json", action="store_true", help="with --check: output JSON")
+    p.add_argument("--dry-run", action="store_true", help="only show what would be done")
+    p.add_argument("--quiet", action="store_true", help="print nothing (for background checks)")
+    p.set_defaults(func=cmd_update)
 
     return parser
 

@@ -28,7 +28,9 @@ HOSTS_YML = textwrap.dedent(
 
 # A tiny stand-in for gh: logs its arguments, answers `auth status`, and
 # implements `auth switch` by rewriting the `user:` line of hosts.yml, and
-# answers `api users/<login>` (fails when FAKE_GH_API_FAIL is set).
+# answers `api users/<login>` (fails when FAKE_GH_API_FAIL is set), plus
+# `api repos/.../releases/latest` (FAKE_GH_RELEASE / FAKE_GH_RELEASE_FAIL)
+# and `api repos/.../tarball/<tag>` (bytes of FAKE_GH_TARBALL).
 FAKE_GH = textwrap.dedent(
     """\
     #!{python}
@@ -66,6 +68,23 @@ FAKE_GH = textwrap.dedent(
         names = {{"alice-corp": "Alice Corp", "alice": None}}
         sys.stdout.write(json.dumps({{"login": login, "id": ids.get(login, 999), "name": names.get(login)}}))
         sys.exit(0)
+    if args[:1] == ["api"] and len(args) > 1 and args[1].startswith("repos/"):
+        if args[1].endswith("/releases/latest"):
+            if os.environ.get("FAKE_GH_RELEASE_FAIL"):
+                sys.stderr.write("HTTP 500\\n")
+                sys.exit(1)
+            tag = os.environ.get("FAKE_GH_RELEASE", "v9.9.9")
+            if tag == "none":
+                sys.stderr.write("HTTP 404: Not Found\\n")
+                sys.exit(1)
+            sys.stdout.write(json.dumps({{"tag_name": tag,
+                "html_url": "https://github.com/x/releases/tag/" + tag,
+                "draft": False, "prerelease": False}}))
+            sys.exit(0)
+        if "/tarball/" in args[1]:
+            with open(os.environ["FAKE_GH_TARBALL"], "rb") as fh:
+                sys.stdout.buffer.write(fh.read())
+            sys.exit(0)
     sys.stderr.write("fake gh: unsupported " + " ".join(args) + "\\n")
     sys.exit(2)
     """
@@ -108,13 +127,15 @@ class GhTestCase(unittest.TestCase):
             "GH_CONTROL_CONFIG": self.config,
             "GH_CONTROL_SEARCH_PATH": "",
             "GH_CONTROL_NO_NOTIFY": "1",
+            "GH_CONTROL_NO_UPDATE_CHECK": "1",
             "GIT_CONFIG_GLOBAL": self.gitconfig,
             "GIT_CONFIG_NOSYSTEM": "1",
             "FAKE_GH_LOG": self.log,
         }
         saved = dict(os.environ)
         self.addCleanup(lambda: (os.environ.clear(), os.environ.update(saved)))
-        for key in ("GH_CONTROL_GH", "GH_TOKEN", "GITHUB_TOKEN"):
+        for key in ("GH_CONTROL_GH", "GH_CONTROL_REPO", "GH_CONTROL_INSTALL_METHOD",
+                    "GH_TOKEN", "GITHUB_TOKEN"):
             os.environ.pop(key, None)
         os.environ.update(env)
 
