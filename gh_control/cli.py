@@ -5,6 +5,7 @@ Each subcommand is a `cmd_<name>(args)` function registered in
 """
 
 import argparse
+import dataclasses
 import json
 import os
 import shutil
@@ -12,7 +13,7 @@ import subprocess
 import sys
 from typing import List, Optional
 
-from gh_control import __version__, core, installer, menu
+from gh_control import __version__, core, installer, menu, updater
 
 
 def _print_account(account: core.Account) -> None:
@@ -44,20 +45,168 @@ def cmd_current(args) -> int:
     return 0
 
 
-def _report_switch(account: core.Account) -> None:
+def _format_identity(name: Optional[str], email: Optional[str]) -> str:
+    return "{} <{}>".format(name or "(no name)", email or "no email")
+
+
+def _report_switch(account: core.Account, cfg: core.Config) -> None:
     print("Switched to {} {} ({})".format(account.icon, account.login, account.label))
+    if not cfg.set_git_identity:
+        return
+    if account.git_name or account.git_email:
+        print("Git identity: {}".format(_format_identity(account.git_name, account.git_email)))
+    if account.git_warning:
+        print("gh-control: could not fetch git identity: {}".format(account.git_warning),
+              file=sys.stderr)
 
 
 def cmd_switch(args) -> int:
-    _report_switch(core.switch(args.user, notify_user=False if args.no_notify else None))
+    cfg = core.load_config()
+    account = core.switch(args.user, cfg, notify_user=False if args.no_notify else None)
+    _report_switch(account, cfg)
     return 0
 
 
 def cmd_toggle(args) -> int:
     cfg = core.load_config()
     target = core.next_account(cfg)
-    _report_switch(core.switch(target.login, cfg, notify_user=False if args.no_notify else None))
+    account = core.switch(target.login, cfg, notify_user=False if args.no_notify else None)
+    _report_switch(account, cfg)
     return 0
+
+
+def _find_account(login: str, cfg: core.Config) -> core.Account:
+    accounts = core.list_accounts(cfg)
+    if not accounts:
+        raise core.NotLoggedInError("No GitHub accounts found. Run: gh auth login")
+    for account in accounts:
+        if account.login == login:
+            return account
+    raise core.UnknownAccountError(
+        "Unknown account '{}' on {}. Known accounts: {}".format(
+            login, cfg.host, ", ".join(a.login for a in accounts)
+        )
+    )
+
+
+def _target_account(login: Optional[str], cfg: core.Config) -> core.Account:
+    if login:
+        return _find_account(login, cfg)
+    account = core.active_account(cfg)
+    if account is None:
+        raise core.NotLoggedInError("No active GitHub account. Run: gh auth login")
+    return account
+
+
+def _identity_show(args) -> int:
+    cfg = core.load_config()
+    accounts = core.list_accounts(cfg)
+    git = {
+        "global": core.read_git_identity("global"),
+        "local": core.read_git_identity("local"),
+        "effective": core.read_git_identity(),
+    }
+    if args.json:
+        print(json.dumps({"accounts": [a.to_dict() for a in accounts], "git": git},
+                         indent=2, ensure_ascii=False))
+        return 0
+    if not accounts:
+        raise core.NotLoggedInError("No GitHub accounts found. Run: gh auth login")
+    for account in accounts:
+        mark = "*" if account.active else " "
+        if account.git_name or account.git_email:
+            identity = "{}  ({})".format(
+                _format_identity(account.git_name, account.git_email), account.git_source
+            )
+        else:
+            identity = "(no git identity — run: gh-control identity sync)"
+        print("{} {} {}  {}".format(mark, account.icon, account.login, identity))
+    print("git global: {}".format(_format_identity(git["global"]["name"], git["global"]["email"])))
+    local = git["local"]
+    in_repo = bool(local["name"] or local["email"])
+    if in_repo:
+        print("this repo: {}".format(_format_identity(local["name"], local["email"])))
+    active = next((a for a in accounts if a.active), None)
+    effective = git["effective"]["email"]
+    if active is not None and active.git_email and effective != active.git_email:
+        print("! git commits here use <{}>, but the active account is {}. "
+              "Fix: gh-control identity apply{}".format(
+                  effective or "no email", active.login, " --local" if in_repo else ""))
+    return 0
+
+
+def _identity_sync(args) -> int:
+    # An explicit sync fetches even when auto_git_identity is off.
+    cfg = dataclasses.replace(core.load_config(), auto_git_identity=True)
+    targets = [_find_account(args.user, cfg)] if args.user else core.list_accounts(cfg)
+    if not targets:
+        raise core.NotLoggedInError("No GitHub accounts found. Run: gh auth login")
+    failed = 0
+    for account in targets:
+        warning = core.ensure_git_identity(account, cfg, refresh=args.force)
+        if warning:
+            failed += 1
+            print("! {}: {}".format(account.login, warning))
+        else:
+            print("✓ {}: {}".format(
+                account.login, _format_identity(account.git_name, account.git_email)))
+    return 1 if failed == len(targets) else 0
+
+
+def _identity_set(args) -> int:
+    if args.name is None and args.email is None:
+        raise core.GhControlError("identity set: give --name and/or --email")
+    if args.email and "@" not in args.email:
+        raise core.GhControlError("Invalid email address: {}".format(args.email))
+    cfg = core.load_config()
+    _find_account(args.login, cfg)
+    updates = {}
+    if args.name is not None:
+        updates["git_name"] = args.name.strip()
+    if args.email is not None:
+        updates["git_email"] = args.email.strip()
+    print("Saved to {}".format(core.update_account_config(args.login, updates)))
+    cfg = core.load_config()
+    account = _find_account(args.login, cfg)
+    if account.active and cfg.set_git_identity:
+        core.apply_git_identity(account)
+        print("{} is the active account, so the global git identity is now: {}".format(
+            account.login, _format_identity(account.git_name, account.git_email)))
+    return 0
+
+
+def _identity_apply(args) -> int:
+    cfg = core.load_config()
+    account = _target_account(args.user, cfg)
+    warning = core.ensure_git_identity(account, cfg)
+    if warning:
+        print("gh-control: could not fetch git identity: {}".format(warning), file=sys.stderr)
+    if not (account.git_name or account.git_email):
+        raise core.GhControlError(
+            "No git identity for {0}. Run: gh-control identity set {0} --name ... --email ...".format(
+                account.login
+            )
+        )
+    scope = "local" if args.local else "global"
+    core.apply_git_identity(account, scope=scope, cwd=args.path)
+    where = ""
+    if args.local:
+        where = " for {}".format(os.path.abspath(args.path or os.getcwd()))
+    print("Set {} git identity{}: {}".format(
+        scope, where, _format_identity(account.git_name, account.git_email)))
+    return 0
+
+
+IDENTITY_ACTIONS = {
+    "show": _identity_show,
+    "sync": _identity_sync,
+    "set": _identity_set,
+    "apply": _identity_apply,
+}
+
+
+def cmd_identity(args) -> int:
+    return IDENTITY_ACTIONS[args.action or "show"](args)
 
 
 def cmd_menu(args) -> int:
@@ -73,12 +222,19 @@ def _sample_config() -> dict:
                 "label": account.login,
                 "icon": core.DEFAULT_ICON,
                 "color": "",
-                "git_name": "",
-                "git_email": "",
+                "git_name": account.git_name or "",
+                "git_email": account.git_email or "",
             }
     except core.GhControlError:
         pass
-    return {"host": core.DEFAULT_HOST, "notify": True, "accounts": accounts}
+    return {
+        "host": core.DEFAULT_HOST,
+        "notify": True,
+        "set_git_identity": True,
+        "auto_git_identity": True,
+        "check_updates": True,
+        "accounts": accounts,
+    }
 
 
 def cmd_open_config(args) -> int:
@@ -113,6 +269,35 @@ def cmd_doctor(args) -> int:
     return installer.doctor()
 
 
+def _update_check(args) -> int:
+    info = updater.check(force=True)
+    if args.json:
+        data = info.to_dict()
+        data.update(current=__version__, method=updater.install_method(), newer=info.newer)
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    elif args.quiet:
+        pass
+    elif not info.tag:
+        print("No release published yet")
+    elif info.newer:
+        print("Update available: {} -> {}  ({})\nRun: gh-control update".format(
+            __version__, info.tag, info.url or updater.repo()))
+    else:
+        print("gh-control {} is up to date".format(__version__))
+    return 0
+
+
+def cmd_update(args) -> int:
+    try:
+        if args.check:
+            return _update_check(args)
+        return updater.run_update(dry_run=args.dry_run)
+    except core.GhControlError:
+        if args.quiet:
+            return 1
+        raise
+
+
 def build_parser()-> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gh-control",
@@ -138,6 +323,28 @@ def build_parser()-> argparse.ArgumentParser:
     p.add_argument("--no-notify", action="store_true", help="skip the desktop notification")
     p.set_defaults(func=cmd_toggle)
 
+    p = sub.add_parser("identity", help="show and manage the git identity of each account")
+    p.set_defaults(func=cmd_identity, action="show", json=False)
+    actions = p.add_subparsers(dest="action", metavar="ACTION")
+
+    a = actions.add_parser("show", help="show each account's git identity (default)")
+    a.add_argument("--json", action="store_true", help="output JSON")
+
+    a = actions.add_parser("sync", help="fetch names and noreply emails from GitHub")
+    a.add_argument("--force", action="store_true", help="refetch even if already known")
+    a.add_argument("--user", metavar="LOGIN", help="only sync this account")
+
+    a = actions.add_parser("set", help="save a git identity for an account in the config")
+    a.add_argument("login", help="GitHub login")
+    a.add_argument("--name", help="git user.name (empty string removes it)")
+    a.add_argument("--email", help="git user.email (empty string removes it)")
+
+    a = actions.add_parser("apply", help="write an account's identity to git")
+    a.add_argument("--local", action="store_true",
+                   help="set it for the current repository only")
+    a.add_argument("--user", metavar="LOGIN", help="account to use (default: active)")
+    a.add_argument("--path", metavar="DIR", help="repository to use with --local")
+
     p = sub.add_parser("menu", help="print the top-bar menu")
     p.add_argument("--format", choices=menu.FORMATS, default="swiftbar")
     p.set_defaults(func=cmd_menu)
@@ -160,6 +367,13 @@ def build_parser()-> argparse.ArgumentParser:
 
     p = sub.add_parser("doctor", help="check the setup and suggest fixes")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("update", help="check for and install the latest gh-control release")
+    p.add_argument("--check", action="store_true", help="only check, do not install")
+    p.add_argument("--json", action="store_true", help="with --check: output JSON")
+    p.add_argument("--dry-run", action="store_true", help="only show what would be done")
+    p.add_argument("--quiet", action="store_true", help="print nothing (for background checks)")
+    p.set_defaults(func=cmd_update)
 
     return parser
 

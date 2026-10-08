@@ -17,7 +17,7 @@ import sys
 from dataclasses import dataclass
 from typing import List, Optional, TextIO, Tuple
 
-from gh_control import __version__, core
+from gh_control import __version__, core, updater
 
 FRONTENDS = ("auto", "swiftbar", "xbar", "argos", "tray")
 MAC_FRONTENDS = ("swiftbar", "xbar")
@@ -471,6 +471,50 @@ def installed_plugins(platform: Optional[str] = None) -> List[str]:
     return found
 
 
+def _doctor_git_identity(p: _Printer, cfg: core.Config, accounts: List[core.Account]) -> None:
+    """Warn about missing or mismatched git identities (offline, never a blocker)."""
+    if shutil.which("git") is None:
+        p.mark(WARN, "git not found; git identity switching is skipped")
+        return
+    missing = [a.login for a in accounts if not a.has_git_identity()]
+    if not missing:
+        p.mark(OK, "Git identity set for all {} account(s)".format(len(accounts)))
+    elif cfg.set_git_identity:
+        p.mark(
+            WARN,
+            "No git identity for: {}".format(", ".join(missing)),
+            "Run: gh-control identity sync  (or: gh-control identity set <login> --name ... --email ...)",
+        )
+    active = next((a for a in accounts if a.active), None)
+    if active and active.git_email and cfg.set_git_identity:
+        global_email = core.read_git_identity("global")["email"]
+        if global_email != active.git_email:
+            p.mark(
+                WARN,
+                "Global git email is {} but the active account {} uses {}".format(
+                    global_email or "(unset)", active.login, active.git_email
+                ),
+                "Run: gh-control identity apply",
+            )
+
+
+def _doctor_update(p: "_Printer", cfg: core.Config) -> None:
+    """Report the cached release check; never a blocker, never a network call."""
+    info = updater.load_cached()
+    if info and info.newer:
+        if cfg.check_updates:
+            p.mark(
+                WARN,
+                "gh-control {} is available (you have {})".format(info.tag, __version__),
+                "Run: gh-control update",
+            )
+            return
+    elif info and info.tag:
+        p.mark(OK, "gh-control is up to date (latest {})".format(info.tag))
+        return
+    p.line("  Run 'gh-control update --check' to look for updates")
+
+
 def doctor(platform: Optional[str] = None, out: Optional[TextIO] = None) -> int:
     """Check the setup and print fixes. Returns 1 if something blocks use."""
     p = _Printer(out)
@@ -536,6 +580,8 @@ def doctor(platform: Optional[str] = None, out: Optional[TextIO] = None) -> int:
             p.mark(OK, "{} accounts on {}: {}".format(len(accounts), cfg.host, logins))
         if accounts and not active:
             p.mark(WARN, "No active account", "Pick one with: gh-control switch <login>")
+        if accounts:
+            _doctor_git_identity(p, cfg, accounts)
 
     plugins = installed_plugins(platform)
     broken = [path for path in plugins if not os.path.exists(path)]
@@ -581,6 +627,8 @@ def doctor(platform: Optional[str] = None, out: Optional[TextIO] = None) -> int:
             "gh-control is not on your PATH",
             'Add ~/.local/bin to PATH, e.g.: echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/.profile',
         )
+
+    _doctor_update(p, cfg)
 
     p.line()
     if blockers:

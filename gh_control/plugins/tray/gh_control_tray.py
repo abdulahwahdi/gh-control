@@ -93,6 +93,47 @@ class Tray:
 
         cli.main(["open-config"])
 
+    def _identity(self, args):
+        from gh_control import cli
+
+        cli.main(["identity"] + args)
+        self.refresh()
+
+    def _update(self, args):
+        from gh_control import cli
+
+        cli.main(["update"] + args)
+        self.refresh()
+
+    def _add_update(self, gtk_menu, state):
+        update = state.get("update")
+        if update and update.get("newer"):
+            self._add(gtk_menu, "⬆ Update now: gh-control {}".format(update.get("latest")), lambda: self._update([]))
+            if update.get("url"):
+                url = update["url"]
+                self._add(gtk_menu, "Release notes for {}".format(update.get("latest")), lambda: self._open(url))
+        else:
+            self._add(gtk_menu, "Check for updates", lambda: self._update(["--check"]))
+
+    def _add_git_identity(self, gtk_menu, state, active):
+        email = active.get("git_email")
+        login = active["login"]
+        if email:
+            self._add(gtk_menu, "Git: {} <{}>".format(active.get("git_name") or login, email), sensitive=False)
+        else:
+            self._add(
+                gtk_menu,
+                "⚠ No git identity for {} — fetch from GitHub".format(login),
+                lambda: self._identity(["sync", "--user", login]),
+            )
+        global_email = (state.get("git_global") or {}).get("email")
+        if state.get("set_git_identity") and email and global_email and global_email != email:
+            self._add(
+                gtk_menu,
+                "⚠ git uses {} — apply {}'s identity".format(global_email, login),
+                lambda: self._identity(["apply"]),
+            )
+
     def refresh(self):
         Gtk = self.Gtk
         state = menu.build_state()
@@ -122,6 +163,8 @@ class Tray:
                     ),
                 )
                 gtk_menu.append(item)
+            if active:
+                self._add_git_identity(gtk_menu, state, active)
             if state["config_error"]:
                 self._add(gtk_menu, "⚠ " + state["config_error"], sensitive=False)
             gtk_menu.append(Gtk.SeparatorMenuItem())
@@ -131,6 +174,7 @@ class Tray:
         gtk_menu.append(Gtk.SeparatorMenuItem())
         self._add(gtk_menu, "Refresh", self.refresh)
         self._add(gtk_menu, "Open config", self._open_config)
+        self._add_update(gtk_menu, state)
         self._add(gtk_menu, "Quit", Gtk.main_quit)
         gtk_menu.show_all()
         self.indicator.set_menu(gtk_menu)

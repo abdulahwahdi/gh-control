@@ -1,4 +1,6 @@
+import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -110,7 +112,7 @@ class SwitchTest(GhTestCase):
 
     def test_switch_to_active_account_is_noop_for_gh(self):
         core.switch("alice-corp")
-        self.assertEqual(self.gh_calls(), [])
+        self.assertEqual([c for c in self.gh_calls() if c[:1] == ["auth"]], [])
 
     def test_unknown_user_raises(self):
         with self.assertRaises(core.UnknownAccountError) as ctx:
@@ -157,6 +159,13 @@ class ConfigTest(GhTestCase):
         accounts = {a.login: a for a in core.list_accounts(cfg)}
         self.assertEqual(accounts["alice-corp"].label, "alice-corp")
 
+    def test_check_updates(self):
+        self.assertTrue(core.load_config().check_updates)
+        self.write_config({"check_updates": False})
+        self.assertFalse(core.load_config().check_updates)
+        self.write_config({"check_updates": "no"})
+        self.assertTrue(core.load_config().check_updates)
+
     def test_invalid_json_is_reported_not_raised(self):
         self.write(self.config, "{not json")
         cfg = core.load_config()
@@ -164,7 +173,7 @@ class ConfigTest(GhTestCase):
         self.assertEqual(len(core.list_accounts(cfg)), 2)
 
 
-@unittest.skipUnless(__import__("shutil").which("git"), "git not installed")
+@unittest.skipUnless(shutil.which("git"), "git not installed")
 class GitIdentityTest(GhTestCase):
     def git_get(self, key):
         proc = subprocess.run(
@@ -188,9 +197,133 @@ class GitIdentityTest(GhTestCase):
         core.switch("alice")
         self.assertFalse(os.path.exists(self.gitconfig))
 
-    def test_no_git_identity_without_config(self):
+    def identities_file(self):
+        return os.path.join(os.path.dirname(self.config), "identities.json")
+
+    def api_calls(self):
+        return [c for c in self.gh_calls() if c[:1] == ["api"]]
+
+    def test_git_identity_applied_from_config_without_fetch(self):
+        self.write_config(SAMPLE_CONFIG)
+        account = core.switch("alice")
+        self.assertEqual(account.git_source, "config")
+        self.assertEqual(self.api_calls(), [])
+
+    def test_identity_from_github_without_config(self):
+        account = core.switch("alice")
+        self.assertEqual(self.git_get("user.name"), "alice")
+        self.assertEqual(self.git_get("user.email"), "102+alice@users.noreply.github.com")
+        self.assertEqual(account.git_source, "github")
+        self.assertIsNone(account.git_warning)
+        self.assertIn(["api", "users/alice", "--hostname", "github.com"], self.gh_calls())
+        with open(self.identities_file()) as fh:
+            cached = json.load(fh)
+        self.assertEqual(
+            cached["github.com"]["alice"],
+            {"name": "alice", "email": "102+alice@users.noreply.github.com", "id": 102},
+        )
+
+    def test_github_name_used_when_set(self):
         core.switch("alice")
+        core.switch("alice-corp")
+        self.assertEqual(self.git_get("user.name"), "Alice Corp")
+        self.assertEqual(self.git_get("user.email"), "101+alice-corp@users.noreply.github.com")
+
+    def test_auto_identity_disabled(self):
+        self.write_config({"auto_git_identity": False})
+        account = core.switch("alice")
         self.assertFalse(os.path.exists(self.gitconfig))
+        self.assertEqual(self.api_calls(), [])
+        self.assertIsNone(account.git_source)
+
+    def test_config_overrides_github_per_field(self):
+        self.write_config({"accounts": {"alice": {"git_email": "me@x.com"}}})
+        account = core.switch("alice")
+        self.assertEqual(self.git_get("user.name"), "alice")
+        self.assertEqual(self.git_get("user.email"), "me@x.com")
+        self.assertEqual(account.git_source, "mixed")
+        self.assertEqual(account.to_dict()["git_source"], "mixed")
+
+    def test_cache_used_without_fetch(self):
+        self.write(
+            self.identities_file(),
+            json.dumps({"github.com": {
+                "alice": {"name": "Cached Alice", "email": "102+alice@users.noreply.github.com", "id": 102},
+            }}),
+        )
+        accounts = {a.login: a for a in core.list_accounts()}
+        alice = accounts["alice"]
+        self.assertEqual(
+            (alice.git_name, alice.git_email, alice.git_source),
+            ("Cached Alice", "102+alice@users.noreply.github.com", "github"),
+        )
+        self.assertTrue(alice.has_git_identity())
+        self.assertIsNone(accounts["alice-corp"].git_source)
+        self.assertFalse(accounts["alice-corp"].has_git_identity())
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_bad_cache_is_ignored(self):
+        self.write(self.identities_file(), "[not a dict")
+        self.assertEqual(core.load_identity_cache(), {})
+        self.assertEqual(len(core.list_accounts()), 2)
+
+    def test_fetch_failure_does_not_block_switch(self):
+        os.environ["FAKE_GH_API_FAIL"] = "1"
+        account = core.switch("alice")
+        self.assertEqual(core.active_account().login, "alice")
+        self.assertIn("HTTP 404", account.git_warning)
+        self.assertNotIn("git_warning", account.to_dict())
+        self.assertFalse(os.path.exists(self.gitconfig))
+        self.assertFalse(os.path.exists(self.identities_file()))
+
+    def make_repo(self):
+        repo = os.path.join(self.tmp, "repo")
+        os.makedirs(repo)
+        subprocess.run(["git", "init", "-q", repo], check=True)
+        return repo
+
+    def test_apply_local_identity(self):
+        repo = self.make_repo()
+        account = core.Account(login="alice", git_name="Alice", git_email="local@x.com")
+        changes = core.apply_git_identity(account, scope="local", cwd=repo)
+        self.assertEqual(changes, ["user.name=Alice", "user.email=local@x.com"])
+        proc = subprocess.run(
+            ["git", "config", "--local", "user.email"],
+            cwd=repo,
+            stdout=subprocess.PIPE,
+            universal_newlines=True,
+        )
+        self.assertEqual(proc.stdout.strip(), "local@x.com")
+        self.assertFalse(os.path.exists(self.gitconfig))
+        self.assertEqual(
+            core.read_git_identity("local", cwd=repo),
+            {"name": "Alice", "email": "local@x.com"},
+        )
+        self.assertEqual(core.read_git_identity("global", cwd=repo), {"name": None, "email": None})
+        self.assertEqual(core.read_git_identity(cwd=repo)["email"], "local@x.com")
+
+    def test_apply_local_outside_repo_raises(self):
+        outside = os.path.join(self.tmp, "not-a-repo")
+        os.makedirs(outside)
+        os.environ["GIT_CEILING_DIRECTORIES"] = self.tmp
+        account = core.Account(login="alice", git_name="Alice", git_email="a@x.com")
+        with self.assertRaises(core.GhControlError) as ctx:
+            core.apply_git_identity(account, scope="local", cwd=outside)
+        self.assertIn("Not inside a git repository", str(ctx.exception))
+
+
+class NoreplyEmailTest(unittest.TestCase):
+    def test_github_com(self):
+        self.assertEqual(
+            core.noreply_email("alice", 102, "github.com"),
+            "102+alice@users.noreply.github.com",
+        )
+
+    def test_enterprise_host(self):
+        self.assertEqual(
+            core.noreply_email("alice", 7, "ghe.corp.com"),
+            "7+alice@users.noreply.ghe.corp.com",
+        )
 
 
 class CliTest(GhTestCase):
