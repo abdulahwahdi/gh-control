@@ -294,6 +294,10 @@ Run `gh-control tray` to start it right away (no logout needed). On GNOME
 without Argos, the tray also works with the *AppIndicator and KStatusNotifierItem
 Support* extension.
 
+The tray menu has an **Edit git identity…** entry that opens a dialog to change
+the git name and email of the active account (the same as
+`gh-control identity set`).
+
 ## 🔧 CLI reference
 
 | Command | What it does |

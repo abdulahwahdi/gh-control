@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tray: "Edit git identity…" dialog to change the git name and email of the
+  active account.
 - `gh-control tray` starts the Linux system tray immediately, without logging
   out and in again (detached by default, `--foreground`, skips if already
   running).
