@@ -269,6 +269,17 @@ def _extract(archive: str, target: str) -> None:
                 os.chmod(path, 0o755 if member.mode & 0o111 else 0o644)
 
 
+def installed_version(root: Optional[str] = None) -> Optional[str]:
+    """`__version__` of the copy at `root` (default ROOT_DIR), read from disk."""
+    path = os.path.join(root or ROOT_DIR, "gh_control", "__init__.py")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            m = re.search(r"^__version__\s*=\s*[\"']([^\"']+)[\"']", fh.read(), re.M)
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
 def replace_source_install(tag: str, dest: str = ROOT_DIR) -> None:
     """Replace the copy at `dest` with the release `tag`, atomically-ish."""
     gh = core.require_gh()
@@ -357,6 +368,10 @@ def run_update(dry_run: bool = False, out: Optional[TextIO] = None) -> int:
                 ROOT_DIR, repo(), tag), file=out)
             return 0
         replace_source_install(tag)
+        installed = installed_version()
+        if parse_version(installed) != parse_version(tag):
+            print("! {} was installed, but it reports version {}; the release was tagged "
+                  "without bumping __version__.".format(tag, installed or "unknown"), file=out)
     else:
         cmd = upgrade_command(method, tag) or []
         if dry_run:

@@ -44,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `git_name` / `git_email` in the config. Set `"auto_git_identity": false`
   to restore the old behaviour.
 
+### Fixed
+
+- `gh-control update` reported success but `--version` still said 0.1.0
+  and the update kept being offered: releases v1.0.0–v1.0.2 were tagged
+  without bumping `__version__`. The version is now 1.0.3, a plain-copy
+  update warns when the installed release reports a different version,
+  and a test fails if `__version__` is behind the newest tag.
+
 ## [0.1.0] - 2026-10-05
 
 ### Added
