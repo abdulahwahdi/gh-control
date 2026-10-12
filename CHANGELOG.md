@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `gh-control tray` starts the Linux system tray immediately, without logging
+  out and in again (detached by default, `--foreground`, skips if already
+  running).
 - Automatic git identity for every account: the GitHub name (or login) and
   the `ID+login@users.noreply.github.com` email, fetched with
   `gh api users/<login>` and cached in `identities.json`. Config

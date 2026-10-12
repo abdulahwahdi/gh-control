@@ -265,6 +265,10 @@ def cmd_uninstall(args) -> int:
     return installer.uninstall(dry_run=args.dry_run, target_dir=args.plugin_dir)
 
 
+def cmd_tray(args) -> int:
+    return installer.start_tray(foreground=args.foreground, force=args.force, dry_run=args.dry_run)
+
+
 def cmd_doctor(args) -> int:
     return installer.doctor()
 
@@ -364,6 +368,12 @@ def build_parser()-> argparse.ArgumentParser:
     p.add_argument("--plugin-dir", metavar="DIR", help="also look in this plugin folder")
     p.add_argument("--dry-run", action="store_true", help="only show what would be done")
     p.set_defaults(func=cmd_uninstall)
+
+    p = sub.add_parser("tray", help="start the system tray icon now (Linux)")
+    p.add_argument("--foreground", action="store_true", help="stay attached to the terminal")
+    p.add_argument("--force", action="store_true", help="start even if one seems to be running")
+    p.add_argument("--dry-run", action="store_true", help="only show what would be done")
+    p.set_defaults(func=cmd_tray)
 
     p = sub.add_parser("doctor", help="check the setup and suggest fixes")
     p.set_defaults(func=cmd_doctor)

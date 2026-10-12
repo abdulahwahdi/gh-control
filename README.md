@@ -290,7 +290,7 @@ gh-control install --frontend tray
 ```
 
 This adds an autostart entry, so the tray starts at your next login.
-`gh-control install` prints the command to start it right away. On GNOME
+Run `gh-control tray` to start it right away (no logout needed). On GNOME
 without Argos, the tray also works with the *AppIndicator and KStatusNotifierItem
 Support* extension.
 
@@ -310,6 +310,7 @@ Support* extension.
 | `gh-control open-config [--print-path]` | Create the config file if missing and open it |
 | `gh-control install [--frontend F] [--plugin-dir DIR] [--dry-run]` | Install the top-bar plugin; `F` is `auto`, `swiftbar`, `xbar`, `argos` or `tray` |
 | `gh-control uninstall [--plugin-dir DIR] [--dry-run]` | Remove the plugin (config is kept) |
+| `gh-control tray [--foreground] [--force] [--dry-run]` | Start the Linux system tray now (detached; skipped if already running) |
 | `gh-control doctor` | Check the setup and suggest fixes |
 | `gh-control update [--check] [--dry-run]` | Upgrade to the latest release the same way gh-control was installed; `--check` only looks (`--json` for machine output) |
 | `gh-control --version` | Print the version |
@@ -477,7 +478,8 @@ gh-control update --dry-run # show what would be run
 | Git checkout | Left untouched; it prints a `git pull` hint |
 
 When the installer can't tell, it prints the one-line installer command to
-run instead. Restart the tray app after updating if you use it.
+run instead. If you use the tray, quit the old one from its menu after
+updating, then run `gh-control tray`.
 
 The latest release is looked up with
 `gh api repos/abdulahwahdi/gh-control/releases/latest` (drafts and

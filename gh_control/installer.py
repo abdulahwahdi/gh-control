@@ -240,6 +240,77 @@ def tray_deps_available() -> bool:
     return proc.returncode == 0
 
 
+TRAY_DEPS_HINT = (
+    "Debian/Ubuntu: sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1\n"
+    "Fedora:        sudo dnf install python3-gobject libayatana-appindicator-gtk3\n"
+    "Arch:          sudo pacman -S python-gobject libayatana-appindicator"
+)
+
+
+def tray_running() -> bool:
+    """Whether a tray process (gh_control_tray.py) is already running."""
+    pgrep = shutil.which("pgrep")
+    if not pgrep:
+        return False
+    try:
+        proc = subprocess.run(
+            [pgrep, "-f", "gh_control_tray.py"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
+
+
+def start_tray(
+    foreground: bool = False,
+    force: bool = False,
+    dry_run: bool = False,
+    out: Optional[TextIO] = None,
+) -> int:
+    """Start the Linux tray now. Returns a process exit code."""
+    p = _Printer(out, dry_run)
+    if sys.platform == "darwin":
+        p.mark(FAIL, "The tray is Linux-only.", "On macOS use SwiftBar or xbar: gh-control install")
+        return 1
+    if not tray_deps_available():
+        p.mark(FAIL, "PyGObject not found for python3.", TRAY_DEPS_HINT)
+        return 1
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        p.mark(FAIL, "No graphical session found (DISPLAY / WAYLAND_DISPLAY is not set).")
+        return 1
+    if tray_running() and not force:
+        p.mark(OK, "The tray is already running.")
+        return 0
+    cmd = [shutil.which("python3") or "python3", plugin_source("tray")]
+    if dry_run:
+        p.action("run " + " ".join(shlex.quote(a) for a in cmd))
+        return 0
+    if foreground:
+        try:
+            return subprocess.call(cmd)
+        except KeyboardInterrupt:
+            return 130
+        except OSError as exc:
+            p.mark(FAIL, "Could not start the tray: {}".format(exc))
+            return 1
+    try:
+        subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        p.mark(FAIL, "Could not start the tray: {}".format(exc))
+        return 1
+    p.mark(OK, "Tray started.")
+    return 0
+
+
 # --------------------------------------------------------------------------
 # Output
 
@@ -359,11 +430,9 @@ def _next_steps(frontend: str, source: str, p: _Printer) -> None:
     elif frontend == "tray":
         if not tray_deps_available():
             p.line("  • Install the tray dependencies:")
-            p.line("      Debian/Ubuntu: sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1")
-            p.line("      Fedora:        sudo dnf install python3-gobject libayatana-appindicator-gtk3")
-            p.line("      Arch:          sudo pacman -S python-gobject libayatana-appindicator")
-        p.line("  • The tray starts at your next login. Start it now with:")
-        p.line("      nohup python3 {} >/dev/null 2>&1 &".format(shlex.quote(source)))
+            for hint in TRAY_DEPS_HINT.splitlines():
+                p.line("      " + hint)
+        p.line("  • The tray starts at your next login. Start it now with: gh-control tray")
     p.line("  • Log in to each account once: gh auth login")
     p.line("  • Check everything: gh-control doctor")
 
@@ -603,6 +672,8 @@ def doctor(platform: Optional[str] = None, out: Optional[TextIO] = None) -> int:
             p.mark(OK, "Argos GNOME extension found")
         elif tray_deps_available():
             p.mark(OK, "PyGObject available for the tray frontend")
+            if os.path.lexists(autostart_path()) and not tray_running():
+                p.line("    Start it now: gh-control tray")
         else:
             p.mark(
                 WARN,
