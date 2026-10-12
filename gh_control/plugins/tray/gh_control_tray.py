@@ -99,6 +99,43 @@ class Tray:
         cli.main(["identity"] + args)
         self.refresh()
 
+    def _edit_identity(self, login, name, email):
+        Gtk = self.Gtk
+        dialog = Gtk.Dialog(title="Git identity for {}".format(login))
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        grid = Gtk.Grid(column_spacing=8, row_spacing=8, margin=12)
+        entries = []
+        for row, (label, value) in enumerate((("Name", name), ("Email", email))):
+            grid.attach(Gtk.Label(label=label, xalign=0), 0, row, 1, 1)
+            entry = Gtk.Entry()
+            entry.set_text(value or "")
+            entry.set_width_chars(32)
+            entry.set_activates_default(True)
+            grid.attach(entry, 1, row, 1, 1)
+            entries.append(entry)
+        dialog.get_content_area().add(grid)
+        dialog.show_all()
+        try:
+            response = dialog.run()
+            new_name = entries[0].get_text().strip()
+            new_email = entries[1].get_text().strip()
+        finally:
+            dialog.destroy()
+        if response != Gtk.ResponseType.OK:
+            return
+        if new_email and "@" not in new_email:
+            core.notify("gh-control", "Could not save git identity: email must contain @")
+            return
+        from gh_control import cli
+
+        code = cli.main(["identity", "set", login, "--name", new_name, "--email", new_email])
+        if code:
+            core.notify("gh-control", "Could not save git identity")
+        else:
+            core.notify("gh-control", "Git identity saved for {}".format(login))
+        self.refresh()
+
     def _update(self, args):
         from gh_control import cli
 
@@ -126,6 +163,11 @@ class Tray:
                 "⚠ No git identity for {} — fetch from GitHub".format(login),
                 lambda: self._identity(["sync", "--user", login]),
             )
+        self._add(
+            gtk_menu,
+            "Edit git identity…",
+            lambda: self._edit_identity(login, active.get("git_name"), active.get("git_email")),
+        )
         global_email = (state.get("git_global") or {}).get("email")
         if state.get("set_git_identity") and email and global_email and global_email != email:
             self._add(

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tray: "Edit git identity…" dialog to change the git name and email of the
+  active account.
+- `gh-control tray` starts the Linux system tray immediately, without logging
+  out and in again (detached by default, `--foreground`, skips if already
+  running).
 - Automatic git identity for every account: the GitHub name (or login) and
   the `ID+login@users.noreply.github.com` email, fetched with
   `gh api users/<login>` and cached in `identities.json`. Config
@@ -34,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `gh-control list` now shows each account's git identity.
 - Switching now writes a git identity even when the account has no
   `git_name` / `git_email` in the config. Set `"auto_git_identity": false`
   to restore the old behaviour.

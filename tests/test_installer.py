@@ -7,6 +7,7 @@ import sys
 import textwrap
 import time
 import unittest
+from unittest import mock
 
 from helpers import ROOT, SAMPLE_CONFIG, GhTestCase
 
@@ -281,6 +282,64 @@ class DoctorNoGhTest(InstallerTestCase):
         code, out = self.call(installer.doctor, platform="linux")
         self.assertEqual(code, 1, out)
         self.assertIn("✗ GitHub CLI (gh) not found", out)
+
+
+class StartTrayTest(InstallerTestCase):
+    def setUp(self):
+        super().setUp()
+        os.environ["DISPLAY"] = ":0"
+        os.environ.pop("WAYLAND_DISPLAY", None)
+        self.patch(sys, "platform", "linux")
+        self.patch(installer, "tray_deps_available", lambda: True)
+        self.running = False
+        self.patch(installer, "tray_running", lambda: self.running)
+
+    def patch(self, obj, name, value):
+        patcher = mock.patch.object(obj, name, value)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_dry_run_prints_command(self):
+        with mock.patch.object(subprocess, "Popen") as popen:
+            code, out = self.call(installer.start_tray, dry_run=True)
+        self.assertEqual(code, 0, out)
+        self.assertIn("gh_control_tray.py", out)
+        self.assertIn("run ", out)
+        popen.assert_not_called()
+
+    def test_already_running_is_skipped(self):
+        self.running = True
+        with mock.patch.object(subprocess, "Popen") as popen:
+            code, out = self.call(installer.start_tray)
+        self.assertEqual(code, 0, out)
+        self.assertIn("already running", out)
+        popen.assert_not_called()
+
+    def test_force_starts_detached(self):
+        self.running = True
+        with mock.patch.object(subprocess, "Popen") as popen:
+            code, out = self.call(installer.start_tray, force=True)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(popen.call_args[1]["start_new_session"])
+
+    def test_missing_deps_fails(self):
+        self.patch(installer, "tray_deps_available", lambda: False)
+        code, out = self.call(installer.start_tray)
+        self.assertEqual(code, 1)
+        self.assertIn("python3-gi", out)
+
+    def test_no_display_fails(self):
+        os.environ.pop("DISPLAY", None)
+        code, out = self.call(installer.start_tray)
+        self.assertEqual(code, 1)
+        self.assertIn("No graphical session", out)
+
+    def test_cli_wiring(self):
+        from gh_control import cli
+
+        with mock.patch.object(subprocess, "Popen") as popen:
+            self.assertEqual(cli.main(["tray", "--dry-run"]), 0)
+        popen.assert_not_called()
 
 
 class CliTest(InstallerTestCase):

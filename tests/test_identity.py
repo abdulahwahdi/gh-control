@@ -184,6 +184,19 @@ class IdentityCliTest(GhTestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertNotIn("Git identity", proc.stdout)
 
+    def test_list_shows_identity(self):
+        self.assertEqual(
+            self.run_cli("identity", "set", "alice", "--name", "Al", "--email", "a@b.c").returncode, 0)
+        proc = self.run_cli("list")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        lines = {l.replace("*", " ").split()[1]: l for l in proc.stdout.splitlines()}
+        self.assertTrue(lines["alice"].endswith("Al <a@b.c>"), proc.stdout)
+        self.assertTrue(lines["alice-corp"].endswith("(no git identity)"), proc.stdout)
+        data = json.loads(self.run_cli("list", "--json").stdout)
+        by_login = {a["login"]: a for a in data}
+        self.assertEqual(by_login["alice"]["git_email"], "a@b.c")
+        self.assertIsNone(by_login["alice-corp"]["git_email"])
+
     def test_open_config_prefills_identity(self):
         self.run_cli("identity", "sync")
         proc = self.run_cli("open-config", "--print-path")
