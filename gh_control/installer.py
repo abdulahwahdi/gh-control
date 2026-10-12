@@ -223,11 +223,7 @@ def autostart_entry(source: str) -> str:
     )
 
 
-def tray_deps_available() -> bool:
-    """Whether the system python3 can load PyGObject (needed by the tray)."""
-    python = shutil.which("python3")
-    if not python:
-        return False
+def _can_import_gi(python: str) -> bool:
     try:
         proc = subprocess.run(
             [python, "-c", "import gi"],
@@ -238,6 +234,27 @@ def tray_deps_available() -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     return proc.returncode == 0
+
+
+def find_tray_python() -> Optional[str]:
+    """A python3 that can load PyGObject (needed by the tray), or None.
+
+    The first python3 on PATH is often a venv/pyenv/pipx interpreter that cannot
+    see the distro's PyGObject, so the system interpreter is tried as well.
+    """
+    candidates = []
+    for python in (shutil.which("python3"), "/usr/bin/python3"):
+        if python and python not in candidates and os.path.exists(python):
+            candidates.append(python)
+    for python in candidates:
+        if _can_import_gi(python):
+            return python
+    return None
+
+
+def tray_deps_available() -> bool:
+    """Whether some python3 can load PyGObject (needed by the tray)."""
+    return find_tray_python() is not None
 
 
 TRAY_DEPS_HINT = (
@@ -275,7 +292,8 @@ def start_tray(
     if sys.platform == "darwin":
         p.mark(FAIL, "The tray is Linux-only.", "On macOS use SwiftBar or xbar: gh-control install")
         return 1
-    if not tray_deps_available():
+    python = find_tray_python()
+    if not python:
         p.mark(FAIL, "PyGObject not found for python3.", TRAY_DEPS_HINT)
         return 1
     if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
@@ -284,7 +302,7 @@ def start_tray(
     if tray_running() and not force:
         p.mark(OK, "The tray is already running.")
         return 0
-    cmd = [shutil.which("python3") or "python3", plugin_source("tray")]
+    cmd = [python, plugin_source("tray")]
     if dry_run:
         p.action("run " + " ".join(shlex.quote(a) for a in cmd))
         return 0

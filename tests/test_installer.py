@@ -290,7 +290,7 @@ class StartTrayTest(InstallerTestCase):
         os.environ["DISPLAY"] = ":0"
         os.environ.pop("WAYLAND_DISPLAY", None)
         self.patch(sys, "platform", "linux")
-        self.patch(installer, "tray_deps_available", lambda: True)
+        self.patch(installer, "find_tray_python", lambda: "/usr/bin/python3")
         self.running = False
         self.patch(installer, "tray_running", lambda: self.running)
 
@@ -323,7 +323,7 @@ class StartTrayTest(InstallerTestCase):
         self.assertTrue(popen.call_args[1]["start_new_session"])
 
     def test_missing_deps_fails(self):
-        self.patch(installer, "tray_deps_available", lambda: False)
+        self.patch(installer, "find_tray_python", lambda: None)
         code, out = self.call(installer.start_tray)
         self.assertEqual(code, 1)
         self.assertIn("python3-gi", out)
@@ -340,6 +340,34 @@ class StartTrayTest(InstallerTestCase):
         with mock.patch.object(subprocess, "Popen") as popen:
             self.assertEqual(cli.main(["tray", "--dry-run"]), 0)
         popen.assert_not_called()
+
+
+class FindTrayPythonTest(InstallerTestCase):
+    def setUp(self):
+        super().setUp()
+        for target, name, value in (
+            (installer.shutil, "which", lambda name: "/venv/bin/python3"),
+            (installer.os.path, "exists", lambda p: True),
+        ):
+            patcher = mock.patch.object(target, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def patch(self, obj, name, value):
+        patcher = mock.patch.object(obj, name, value)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_falls_back_to_system_python(self):
+        # PATH python3 (e.g. a venv) lacks PyGObject; /usr/bin/python3 has it.
+        self.patch(installer, "_can_import_gi", lambda python: python == "/usr/bin/python3")
+        self.assertEqual(installer.find_tray_python(), "/usr/bin/python3")
+        self.assertTrue(installer.tray_deps_available())
+
+    def test_no_python_with_gi(self):
+        self.patch(installer, "_can_import_gi", lambda python: False)
+        self.assertIsNone(installer.find_tray_python())
+        self.assertFalse(installer.tray_deps_available())
 
 
 class CliTest(InstallerTestCase):
