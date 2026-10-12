@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # <xbar.title>gh-control</xbar.title>
-# <xbar.version>v0.1.0</xbar.version>
+# <xbar.version>v1.0.3</xbar.version>
 # <xbar.desc>Show and switch the active GitHub CLI (gh) account.</xbar.desc>
 # <xbar.dependencies>python3,gh</xbar.dependencies>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>

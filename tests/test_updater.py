@@ -2,13 +2,14 @@ import contextlib
 import io
 import json
 import os
+import subprocess
 import tarfile
 import time
 import unittest
 
 from helpers import GhTestCase
 
-from gh_control import cli, core, updater
+from gh_control import __version__, cli, core, updater
 
 
 class VersionTest(unittest.TestCase):
@@ -216,6 +217,44 @@ class ReplaceSourceInstallTest(GhTestCase):
         self.assertIn("9.9.9", self.read("gh_control", "__init__.py"))
         with open(updater.cache_path()) as fh:
             self.assertEqual(json.load(fh)["latest"], "v9.9.9")
+        self.assertNotIn("without bumping", out.getvalue())
+
+    def test_source_update_warns_when_release_reports_old_version(self):
+        # A release tagged without bumping __version__ keeps reporting the old one.
+        self.make_tarball({
+            "gh-control-9.9.9/gh_control/__init__.py": '__version__ = "0.1.0"\n',
+            "gh-control-9.9.9/bin/gh-control": "new\n",
+        })
+        os.environ["GH_CONTROL_INSTALL_METHOD"] = "source"
+        saved = updater.ROOT_DIR
+        updater.ROOT_DIR = self.dest
+        self.addCleanup(setattr, updater, "ROOT_DIR", saved)
+        original = updater.replace_source_install
+        self.addCleanup(setattr, updater, "replace_source_install", original)
+        updater.replace_source_install = lambda tag: original(tag, dest=self.dest)
+        out = io.StringIO()
+        self.assertEqual(updater.run_update(out=out), 0)
+        self.assertIn("reports version 0.1.0", out.getvalue())
+
+    def test_installed_version(self):
+        self.assertEqual(updater.installed_version(self.dest), "0.1.0")
+        self.assertIsNone(updater.installed_version(os.path.join(self.tmp, "missing")))
+
+
+class PackageVersionTest(unittest.TestCase):
+    def test_version_not_behind_latest_tag(self):
+        # Tagging a release without bumping __version__ makes `gh-control update`
+        # install it yet keep reporting (and offering) the same old version.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            proc = subprocess.run(["git", "-C", root, "tag", "--list", "v*"],
+                                  capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired):
+            self.skipTest("git not available")
+        tags = [v for v in map(updater.parse_version, proc.stdout.split()) if v]
+        if proc.returncode != 0 or not tags:
+            self.skipTest("no release tags in this checkout")
+        self.assertGreaterEqual(updater.parse_version(__version__), max(tags))
 
 
 if __name__ == "__main__":
