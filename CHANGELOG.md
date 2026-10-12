@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `gh-control list` now shows each account's git identity.
 - Switching now writes a git identity even when the account has no
   `git_name` / `git_email` in the config. Set `"auto_git_identity": false`
   to restore the old behaviour.

@@ -19,7 +19,11 @@ from gh_control import __version__, core, installer, menu, updater
 def _print_account(account: core.Account) -> None:
     mark = "*" if account.active else " "
     extra = "" if account.label == account.login else "  ({})".format(account.label)
-    print("{} {} {}{}".format(mark, account.icon, account.login, extra))
+    if account.git_name or account.git_email:
+        identity = _format_identity(account.git_name, account.git_email)
+    else:
+        identity = "(no git identity)"
+    print("{} {} {}{}  {}".format(mark, account.icon, account.login, extra, identity))
 
 
 def cmd_list(args) -> int:

@@ -298,7 +298,7 @@ Support* extension.
 
 | Command | What it does |
 | --- | --- |
-| `gh-control list [--json]` | List logged-in accounts; `*` marks the active one |
+| `gh-control list [--json]` | List logged-in accounts with their git identity; `*` marks the active one |
 | `gh-control current [--json]` | Print the active login |
 | `gh-control switch <user> [--no-notify]` | Make `<user>` the active account (and apply its git identity) |
 | `gh-control toggle [--no-notify]` | Switch to the next account in the list |
@@ -317,8 +317,8 @@ Support* extension.
 
 ```console
 $ gh-control list
-* 💼 alice-corp  (Work)
-  🏠 alice  (Personal)
+* 💼 alice-corp  (Work)  Alice Corp <alice@corp.example>
+  🏠 alice  (Personal)  alice <102+alice@users.noreply.github.com>
 $ gh-control switch alice
 Switched to 🏠 alice (Personal)
 Git identity: alice <102+alice@users.noreply.github.com>
